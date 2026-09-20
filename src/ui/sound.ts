@@ -1,6 +1,7 @@
 /** Tiny chiptune sound effects made with the Web Audio API, no files. */
 
-type Note = [freq: number, ms: number];
+/** One step of a jingle: one or more frequencies played together, for a duration. */
+type Note = [freq: number | number[], ms: number];
 
 let ctx: AudioContext | null = null;
 let muted = false;
@@ -21,15 +22,17 @@ function play(notes: Note[], type: OscillatorType = 'square', gain = 0.08): void
   if (!ac) return;
   let t = ac.currentTime;
   for (const [freq, ms] of notes) {
-    const osc = ac.createOscillator();
-    const g = ac.createGain();
-    osc.type = type;
-    osc.frequency.value = freq;
-    g.gain.setValueAtTime(gain, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + ms / 1000);
-    osc.connect(g).connect(ac.destination);
-    osc.start(t);
-    osc.stop(t + ms / 1000);
+    for (const f of Array.isArray(freq) ? freq : [freq]) {
+      const osc = ac.createOscillator();
+      const g = ac.createGain();
+      osc.type = type;
+      osc.frequency.value = f;
+      g.gain.setValueAtTime(gain, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + ms / 1000);
+      osc.connect(g).connect(ac.destination);
+      osc.start(t);
+      osc.stop(t + ms / 1000);
+    }
     t += ms / 1000;
   }
 }
@@ -60,7 +63,20 @@ export const sound = {
   roll(): void {
     play([[200, 40], [260, 40], [320, 40], [400, 40], [520, 60]], 'square', 0.05);
   },
+  /**
+   * Zelda-style "item get" fanfare: da, da, da, DAAAA. Three quick rising notes
+   * (G4 A4 B4) into a held C major chord. Tune the numbers here to taste.
+   */
   win(): void {
-    play([[523, 110], [659, 110], [784, 110], [1047, 220], [784, 110], [1047, 320]], 'square', 0.09);
+    play(
+      [
+        [392, 130],
+        [440, 130],
+        [494, 130],
+        [[523, 659, 784, 1047], 1100],
+      ],
+      'square',
+      0.07,
+    );
   },
 };
