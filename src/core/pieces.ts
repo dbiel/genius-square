@@ -23,7 +23,8 @@ export interface Piece {
   orientations: Cell[][];
 }
 
-function normalize(cells: Cell[]): Cell[] {
+/** Shift cells so the minimum row and column are 0, sorted row-major. */
+export function normalize(cells: Cell[]): Cell[] {
   const minR = Math.min(...cells.map((c) => c.r));
   const minC = Math.min(...cells.map((c) => c.c));
   return cells
