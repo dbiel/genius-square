@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0b0b14"/>
+  <rect x="56" y="56" width="400" height="400" rx="24" fill="#23232a"/>
+  <defs><g id="c">
+    <rect width="120" height="120" fill="#8f5a1f"/>
+    <polygon points="0,0 120,0 102,18 18,18 18,102 0,120" fill="#f7b04a"/>
+    <rect x="18" y="18" width="84" height="84" fill="#f0872a"/>
+  </g></defs>
+  <use href="#c" x="76" y="76"/>
+  <g transform="translate(206 76)"><rect width="120" height="120" fill="#7a7100"/><polygon points="0,0 120,0 102,18 18,18 18,102 0,120" fill="#fff59a"/><rect x="18" y="18" width="84" height="84" fill="#f2e229"/></g>
+  <g transform="translate(336 76)"><rect width="120" height="120" fill="#7a7100"/><polygon points="0,0 120,0 102,18 18,18 18,102 0,120" fill="#fff59a"/><rect x="18" y="18" width="84" height="84" fill="#f2e229"/></g>
+  <g transform="translate(76 206)"><rect width="120" height="120" fill="#7a2c1a"/><polygon points="0,0 120,0 102,18 18,18 18,102 0,120" fill="#ff9a8a"/><rect x="18" y="18" width="84" height="84" fill="#e8402c"/></g>
+  <g transform="translate(206 206)"><rect width="120" height="120" fill="#7a2c1a"/><polygon points="0,0 120,0 102,18 18,18 18,102 0,120" fill="#ff9a8a"/><rect x="18" y="18" width="84" height="84" fill="#e8402c"/></g>
+  <g transform="translate(336 206)"><rect width="120" height="120" fill="#2a6a26"/><polygon points="0,0 120,0 102,18 18,18 18,102 0,120" fill="#a8f0a2"/><rect x="18" y="18" width="84" height="84" fill="#4fba48"/></g>
+  <g transform="translate(76 336)"><rect width="120" height="120" fill="#376a80"/><polygon points="0,0 120,0 102,18 18,18 18,102 0,120" fill="#c0e8f6"/><rect x="18" y="18" width="84" height="84" fill="#63b6d9"/></g>
+  <circle cx="266" cy="396" r="46" fill="#7a5a30"/><circle cx="266" cy="390" r="46" fill="#c99a5b"/>
+  <g transform="translate(336 336)"><rect width="120" height="120" fill="#2a6a26"/><polygon points="0,0 120,0 102,18 18,18 18,102 0,120" fill="#a8f0a2"/><rect x="18" y="18" width="84" height="84" fill="#4fba48"/></g>
+</svg>

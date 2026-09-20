@@ -4,12 +4,14 @@ import { SIZE } from '../core/board';
 import type { Cell, PieceId } from '../core/pieces';
 import { BLOCKER_COLOR, BOARD_COLOR, PIECE_COLORS } from './colors';
 import { UNIT, pegSvg, pieceBounds, pieceSvg } from './tiles';
+import { sound } from './sound';
 
 const MARGIN = 0.9; // label gutter, in cells
-const TRAY_SCALE = 0.62;
 const LIFT = 0.8; // cells the dragged piece floats above the finger
 const BEST_KEY = 'gs.best';
 const TIMER_KEY = 'gs.showTimer';
+const KID_KEY = 'gs.kid';
+const MUTE_KEY = 'gs.mute';
 
 interface Drag {
   id: PieceId;
@@ -41,6 +43,7 @@ export class App {
   private selected: PieceId | null = null;
   private drag: Drag | null = null;
   private showTimer = readStorage(TIMER_KEY) !== '0';
+  private kidMode = readStorage(KID_KEY) === '1';
   private flashId: PieceId | null = null;
   private overlay: 'none' | 'rolling' | 'won' = 'none';
   private wonIsBest = false;
@@ -50,6 +53,8 @@ export class App {
 
   constructor(root: HTMLElement) {
     this.root = root;
+    sound.setMuted(readStorage(MUTE_KEY) === '1');
+    document.documentElement.classList.toggle('kid', this.kidMode);
     root.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     window.addEventListener('pointermove', (e) => this.onPointerMove(e));
     window.addEventListener('pointerup', (e) => this.onPointerUp(e));
@@ -91,7 +96,7 @@ export class App {
         <div class="title">GENIUS SQUARE</div>
         <div class="status">
           <span class="puzzle">#${String(this.game.seed).padStart(5, '0')}</span>
-          <span class="clock ${this.showTimer ? '' : 'hidden'}">${formatMs(this.game.elapsedMs())}</span>
+          <span class="clock ${this.showTimer && !this.kidMode ? '' : 'hidden'}">${formatMs(this.game.elapsedMs())}</span>
         </div>
       </header>
       <section class="stage">
@@ -101,8 +106,10 @@ export class App {
       <nav class="controls">
         <button class="btn primary" data-action="roll">Roll</button>
         <button class="btn" data-action="flip">Flip</button>
-        <button class="btn" data-action="hint">Hint</button>
-        <button class="btn ghost ${this.showTimer ? '' : 'off'}" data-action="timer" title="Show or hide the clock">Timer</button>
+        <button class="btn" data-action="hint">${this.kidMode ? 'Help' : 'Hint'}</button>
+        <button class="btn ghost ${this.showTimer && !this.kidMode ? '' : 'off'}" data-action="timer" title="Show or hide the clock">Timer</button>
+        <button class="btn ghost ${sound.isMuted() ? 'off' : ''}" data-action="mute" title="Sound on or off">Sound</button>
+        <button class="btn ghost ${this.kidMode ? 'on' : ''}" data-action="kid" title="Bigger pieces, no clock">Kid</button>
       </nav>
       ${this.overlayHtml()}
     `;
@@ -176,6 +183,8 @@ export class App {
     this.selected = null;
     this.flashId = null;
     this.overlay = 'rolling';
+    sound.unlock();
+    sound.roll();
     const target = new Game();
     let ticks = 0;
     const spin = setInterval(() => {
@@ -198,6 +207,7 @@ export class App {
   private hint(): void {
     const h: GameHint | null = this.game.hint();
     if (!h) return;
+    sound.drop();
     this.flashId = h.id;
     this.selected = null;
     this.render();
@@ -209,7 +219,23 @@ export class App {
 
   private flip(): void {
     if (!this.selected) return;
+    sound.rotate();
     this.game.flip(this.selected);
+    this.render();
+  }
+
+  private toggleMute(): void {
+    sound.setMuted(!sound.isMuted());
+    writeStorage(MUTE_KEY, sound.isMuted() ? '1' : '0');
+    if (!sound.isMuted()) sound.rotate();
+    this.render();
+  }
+
+  private toggleKid(): void {
+    this.kidMode = !this.kidMode;
+    writeStorage(KID_KEY, this.kidMode ? '1' : '0');
+    document.documentElement.classList.toggle('kid', this.kidMode);
+    this.fit();
     this.render();
   }
 
@@ -228,6 +254,7 @@ export class App {
       if (this.wonIsBest) writeStorage(BEST_KEY, String(ms));
       this.overlay = 'won';
       this.render();
+      sound.win();
       this.confetti();
       return;
     }
@@ -246,6 +273,8 @@ export class App {
       else if (action === 'hint') this.hint();
       else if (action === 'flip') this.flip();
       else if (action === 'timer') this.toggleTimer();
+      else if (action === 'mute') this.toggleMute();
+      else if (action === 'kid') this.toggleKid();
       return;
     }
     if (this.overlay !== 'none' || this.drag) return;
@@ -256,7 +285,7 @@ export class App {
     const cells = this.game.orientation(id);
     const cell = this.cellPx();
     const rect = el.getBoundingClientRect();
-    const scale = el.classList.contains('piece') ? TRAY_SCALE : 1;
+    const scale = el.classList.contains('piece') ? parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tray-scale')) : 1;
     const ghost = document.createElement('div');
     ghost.className = 'drag-ghost';
     const { w, h } = pieceBounds(cells);
@@ -274,6 +303,8 @@ export class App {
       moved: false,
     };
     this.selected = id;
+    sound.unlock();
+    sound.pickUp();
     this.positionGhost(e);
     this.render();
   }
@@ -322,6 +353,7 @@ export class App {
     const quick = performance.now() - drag.startedAt < 400;
     if (!drag.moved && quick) {
       const was = this.game.board.placements.get(drag.id)?.at;
+      sound.rotate();
       this.game.rotate(drag.id);
       if (was) this.game.drop(drag.id, was);
       this.afterMove();
@@ -338,9 +370,11 @@ export class App {
       return;
     }
     if (this.game.drop(drag.id, at)) {
+      if (!this.game.isSolved()) sound.drop();
       this.afterMove();
       return;
     }
+    sound.error();
     this.render();
     this.root.querySelector(`.tray .piece[data-piece="${drag.id}"]`)?.classList.add('bounce');
   }

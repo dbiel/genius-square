@@ -1,3 +1,11 @@
+@font-face {
+  font-family: 'Press Start 2P';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/press-start-2p.woff2') format('woff2');
+}
+
 :root {
   --bg: #0b0b14;
   --panel: #14141f;
@@ -8,7 +16,10 @@
   --danger: #e8402c;
   --font: 'Press Start 2P', 'Courier New', monospace;
   --cell: 56px;
+  --tray-scale: 0.62;
 }
+
+:root.kid { --tray-scale: 0.8; }
 
 * { box-sizing: border-box; }
 
@@ -101,9 +112,12 @@ svg.board {
   max-width: calc(var(--cell) * 7.2);
 }
 
+:root.kid .tray { max-width: calc(var(--cell) * 8.5); }
+:root.kid button.btn { min-height: 56px; }
+
 .tray .piece {
-  width: calc(var(--cell) * 0.62 * var(--w));
-  height: calc(var(--cell) * 0.62 * var(--h));
+  width: calc(var(--cell) * var(--tray-scale) * var(--w));
+  height: calc(var(--cell) * var(--tray-scale) * var(--h));
   display: block;
   touch-action: none;
   cursor: grab;
@@ -146,6 +160,7 @@ button.btn:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 #000; 
 button.btn.primary { background: var(--accent); color: #1a1500; border-color: #1a1500; }
 button.btn.ghost { border-color: var(--dim); color: var(--dim); font-size: 10px; min-width: 48px; padding: 12px; }
 button.btn.ghost.off { text-decoration: line-through; opacity: 0.55; }
+button.btn.ghost.on { border-color: var(--accent-2); color: var(--accent-2); }
 
 .drag-ghost {
   position: fixed;
