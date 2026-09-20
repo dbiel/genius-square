@@ -25,14 +25,15 @@ describe('DICE', () => {
 });
 
 describe('square names', () => {
-  test('A1 is the top-left cell and F6 the bottom-right', () => {
+  test('letters are rows and numbers are columns, as printed on the board', () => {
     expect(parseSquare('A1')).toEqual({ r: 0, c: 0 });
     expect(parseSquare('F6')).toEqual({ r: 5, c: 5 });
-    expect(parseSquare('C2')).toEqual({ r: 1, c: 2 });
+    expect(parseSquare('C2')).toEqual({ r: 2, c: 1 });
+    expect(parseSquare('A6')).toEqual({ r: 0, c: 5 });
   });
 
   test('squareName is the inverse of parseSquare', () => {
-    expect(squareName({ r: 1, c: 2 })).toBe('C2');
+    expect(squareName({ r: 2, c: 1 })).toBe('C2');
     expect(squareName(parseSquare('E4'))).toBe('E4');
   });
 });

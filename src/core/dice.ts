@@ -20,21 +20,21 @@ const UNIQUE_FACES: readonly (readonly string[])[] = DICE.map((die) => [...new S
 /** Number of distinct blocker layouts: 6 * 6 * 6 * 4 * 6 * 6 * 2. */
 export const PUZZLE_COUNT: number = UNIQUE_FACES.reduce((n, die) => n * die.length, 1);
 
-const COLUMNS = 'ABCDEF';
+const ROWS = 'ABCDEF';
 
-/** "C2" -> { r: 1, c: 2 }. Column letter first, then row number, as printed on the dice. */
+/** "C2" -> { r: 2, c: 1 }. Letters label rows and numbers label columns, as printed on the board. */
 export function parseSquare(name: string): Cell {
-  const c = COLUMNS.indexOf(name[0]);
-  const r = Number(name.slice(1)) - 1;
-  if (c < 0 || !Number.isInteger(r) || r < 0 || r > 5) {
+  const r = ROWS.indexOf(name[0]);
+  const c = Number(name.slice(1)) - 1;
+  if (r < 0 || !Number.isInteger(c) || c < 0 || c > 5) {
     throw new Error(`Bad square name: ${name}`);
   }
   return { r, c };
 }
 
-/** { r: 1, c: 2 } -> "C2". */
+/** { r: 2, c: 1 } -> "C2". */
 export function squareName(cell: Cell): string {
-  return `${COLUMNS[cell.c]}${cell.r + 1}`;
+  return `${ROWS[cell.r]}${cell.c + 1}`;
 }
 
 /** Roll all seven dice. `random` must return a number in [0, 1). */
