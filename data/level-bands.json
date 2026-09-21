@@ -1,0 +1,62 @@
+[
+  {
+    "level": 1,
+    "puzzles": 6221,
+    "minSolutions": 4170,
+    "maxSolutions": 22317
+  },
+  {
+    "level": 2,
+    "puzzles": 6221,
+    "minSolutions": 2793,
+    "maxSolutions": 4170
+  },
+  {
+    "level": 3,
+    "puzzles": 6221,
+    "minSolutions": 2123,
+    "maxSolutions": 2792
+  },
+  {
+    "level": 4,
+    "puzzles": 6221,
+    "minSolutions": 1672,
+    "maxSolutions": 2123
+  },
+  {
+    "level": 5,
+    "puzzles": 6220,
+    "minSolutions": 1340,
+    "maxSolutions": 1672
+  },
+  {
+    "level": 6,
+    "puzzles": 6221,
+    "minSolutions": 1067,
+    "maxSolutions": 1340
+  },
+  {
+    "level": 7,
+    "puzzles": 6221,
+    "minSolutions": 825,
+    "maxSolutions": 1067
+  },
+  {
+    "level": 8,
+    "puzzles": 6221,
+    "minSolutions": 608,
+    "maxSolutions": 824
+  },
+  {
+    "level": 9,
+    "puzzles": 6221,
+    "minSolutions": 393,
+    "maxSolutions": 608
+  },
+  {
+    "level": 10,
+    "puzzles": 6220,
+    "minSolutions": 11,
+    "maxSolutions": 393
+  }
+]

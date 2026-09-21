@@ -186,6 +186,11 @@ button.btn:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 #000; 
 button.btn.primary { background: var(--accent); color: #1a1500; border-color: #1a1500; }
 button.btn.ghost { border-color: var(--dim); color: var(--dim); font-size: 10px; min-width: 48px; padding: 12px; }
 button.btn.ghost.off { text-decoration: line-through; opacity: 0.55; }
+button.btn.ghost.step { min-width: 48px; padding: 12px 0; font-size: 14px; }
+button.btn.ghost.step:disabled { opacity: 0.3; cursor: default; transform: none; box-shadow: 4px 4px 0 #000; }
+
+.level { display: flex; align-items: center; gap: 6px; }
+.level-value { font-size: 12px; color: var(--accent-2); min-width: 5ch; text-align: center; }
 
 .drag-ghost {
   position: fixed;
@@ -252,3 +257,75 @@ button.btn.ghost.off { text-decoration: line-through; opacity: 0.55; }
 @keyframes tumble { from { transform: rotate(-12deg) translateY(-2px); } to { transform: rotate(12deg) translateY(2px); } }
 
 canvas.confetti { position: fixed; inset: 0; pointer-events: none; z-index: 45; }
+
+/* ---------- hamburger + menu ---------- */
+
+.burger {
+  width: 44px;
+  height: 44px;
+  background: var(--panel);
+  border: 3px solid var(--ink);
+  box-shadow: 3px 3px 0 #000;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 9px;
+  cursor: pointer;
+}
+
+.burger span { display: block; height: 4px; background: var(--ink); }
+.burger:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #000; }
+
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 5, 12, 0.7);
+  z-index: 60;
+}
+
+.menu {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(320px, 86vw);
+  background: var(--panel);
+  border-left: 6px solid var(--accent);
+  box-shadow: -8px 0 0 #000;
+  padding: calc(env(safe-area-inset-top, 0px) + 18px) 18px calc(env(safe-area-inset-bottom, 0px) + 18px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  z-index: 61;
+  overflow-y: auto;
+}
+
+.menu-head { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--accent); }
+.menu-row { display: flex; gap: 10px; }
+.menu-row .btn { flex: 1; min-width: 0; }
+.menu .wide { width: 100%; }
+.menu .btn:disabled { opacity: 0.4; cursor: default; }
+.menu .btn small { display: block; font-size: 7px; margin-top: 6px; color: var(--accent-2); }
+
+.menu-field { display: flex; flex-direction: column; gap: 8px; font-size: 10px; color: var(--dim); }
+
+.menu-field input.name {
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 4px solid var(--ink);
+  box-shadow: 4px 4px 0 #000;
+  padding: 12px;
+  width: 100%;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.menu-field input.name:focus { outline: none; border-color: var(--accent); }
+
+@media (max-width: 420px) {
+  .title { font-size: 11px; }
+  .topbar { font-size: 9px; }
+}

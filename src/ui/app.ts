@@ -5,6 +5,7 @@ import { PIECES, type Cell, type PieceId } from '../core/pieces';
 import { BLOCKER_COLOR, BOARD_COLOR, PIECE_COLORS } from './colors';
 import { UNIT, pegSvg, pieceBounds, pieceSvg } from './tiles';
 import { sound } from './sound';
+import { LEVEL_COUNT, levelOf, randomSeedForLevel } from '../core/levels';
 
 const MARGIN = 0.9; // label gutter, in cells
 const LIFT = 0.8; // cells the dragged piece floats above the finger
@@ -21,6 +22,10 @@ const TRAY_CELLS = 3 + 4 + 3;
 const BEST_KEY = 'gs.best';
 const TIMER_KEY = 'gs.showTimer';
 const MUTE_KEY = 'gs.mute';
+const LEVEL_KEY = 'gs.level';
+const DEFAULT_LEVEL = 3;
+const NAME_KEY = 'gs.name';
+const DEFAULT_NAME = 'Player 1';
 
 interface Drag {
   id: PieceId;
@@ -42,6 +47,14 @@ function writeStorage(key: string, value: string): void {
   try { localStorage.setItem(key, value); } catch { /* private mode */ }
 }
 
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}
+
+function clampLevel(n: number): number {
+  return Math.min(LEVEL_COUNT, Math.max(1, Math.round(n)));
+}
+
 function formatMs(ms: number): string {
   const s = Math.floor(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -51,6 +64,9 @@ export class App {
   private game = new Game();
   private drag: Drag | null = null;
   private showTimer = readStorage(TIMER_KEY) !== '0';
+  private level = clampLevel(Number(readStorage(LEVEL_KEY)) || DEFAULT_LEVEL);
+  private menuOpen = false;
+  private playerName = (readStorage(NAME_KEY) ?? '').trim() || DEFAULT_NAME;
   private flashId: PieceId | null = null;
   private overlay: 'none' | 'rolling' | 'won' = 'none';
   private wonIsBest = false;
@@ -62,6 +78,7 @@ export class App {
     this.root = root;
     sound.setMuted(readStorage(MUTE_KEY) === '1');
     root.addEventListener('pointerdown', (e) => this.onPointerDown(e));
+    root.addEventListener('change', (e) => this.onChange(e));
     window.addEventListener('pointermove', (e) => this.onPointerMove(e));
     window.addEventListener('pointerup', (e) => this.onPointerUp(e));
     window.addEventListener('pointercancel', (e) => this.onPointerUp(e));
@@ -101,8 +118,9 @@ export class App {
       <header class="topbar">
         <div class="title">GENIUS SQUARE</div>
         <div class="status">
-          <span class="puzzle">#${String(this.game.seed).padStart(5, '0')}</span>
+          <span class="puzzle">#${String(this.game.seed).padStart(5, '0')} LV${levelOf(this.game.seed)}</span>
           <span class="clock ${this.showTimer ? '' : 'hidden'}">${formatMs(this.game.elapsedMs())}</span>
+          <button class="burger" data-action="menu" aria-label="Menu"><span></span><span></span><span></span></button>
         </div>
       </header>
       <section class="stage">
@@ -111,9 +129,13 @@ export class App {
       </section>
       <nav class="controls">
         <button class="btn primary" data-action="roll">Roll</button>
-        <button class="btn ghost ${this.showTimer ? '' : 'off'}" data-action="timer" title="Show or hide the clock">Timer</button>
-        <button class="btn ghost ${sound.isMuted() ? 'off' : ''}" data-action="mute" title="Sound on or off">Sound</button>
+        <div class="level" title="Difficulty for the next roll">
+          <button class="btn ghost step" data-action="level-down" ${this.level <= 1 ? 'disabled' : ''}>-</button>
+          <span class="level-value">LV ${this.level}</span>
+          <button class="btn ghost step" data-action="level-up" ${this.level >= LEVEL_COUNT ? 'disabled' : ''}>+</button>
+        </div>
       </nav>
+      ${this.menuHtml()}
       ${this.overlayHtml()}
     `;
   }
@@ -160,6 +182,25 @@ export class App {
     }).join('');
   }
 
+  private menuHtml(): string {
+    if (!this.menuOpen) return '';
+    return `<div class="menu-backdrop" data-action="menu"></div>
+      <aside class="menu">
+        <div class="menu-head"><span>MENU</span><button class="btn ghost step" data-action="menu">X</button></div>
+        <button class="btn primary wide" data-action="roll">Roll</button>
+        <div class="menu-row">
+          <button class="btn ghost ${this.showTimer ? '' : 'off'}" data-action="timer">Timer</button>
+          <button class="btn ghost ${sound.isMuted() ? 'off' : ''}" data-action="mute">Sound</button>
+        </div>
+        <label class="menu-field">
+          <span>PLAYER</span>
+          <input class="name" name="playerName" type="text" maxlength="16" autocomplete="off" autocapitalize="words" value="${escapeHtml(this.playerName)}" />
+        </label>
+        <button class="btn ghost wide" disabled>Multiplayer <small>soon</small></button>
+        <button class="btn ghost wide" disabled>Times <small>soon</small></button>
+      </aside>`;
+  }
+
   private overlayHtml(): string {
     if (this.overlay === 'rolling') {
       return `<div class="overlay"><div class="card"><h2>ROLLING</h2><div class="dice">${this.diceFaces
@@ -189,10 +230,11 @@ export class App {
 
   private roll(): void {
     this.flashId = null;
+    this.menuOpen = false;
     this.overlay = 'rolling';
     sound.unlock();
     sound.roll();
-    const target = new Game();
+    const target = new Game(randomSeedForLevel(this.level));
     let ticks = 0;
     const spin = setInterval(() => {
       this.diceFaces = DICE.map((die) => die[Math.floor(Math.random() * die.length)]);
@@ -230,6 +272,28 @@ export class App {
     this.game.flip(id);
     if (was) this.game.drop(id, was);
     this.afterMove();
+  }
+
+  private toggleMenu(): void {
+    this.menuOpen = !this.menuOpen;
+    sound.unlock();
+    this.render();
+  }
+
+  private onChange(e: Event): void {
+    const input = e.target as HTMLInputElement;
+    if (input.name === 'playerName') {
+      this.playerName = input.value.trim() || DEFAULT_NAME;
+      writeStorage(NAME_KEY, this.playerName);
+      input.value = this.playerName;
+    }
+  }
+
+  private setLevel(level: number): void {
+    this.level = clampLevel(level);
+    writeStorage(LEVEL_KEY, String(this.level));
+    sound.rotate();
+    this.render();
   }
 
   private toggleMute(): void {
@@ -275,6 +339,9 @@ export class App {
       else if (action === 'flip') this.flip(button.dataset.flip as PieceId);
       else if (action === 'timer') this.toggleTimer();
       else if (action === 'mute') this.toggleMute();
+      else if (action === 'level-down') this.setLevel(this.level - 1);
+      else if (action === 'level-up') this.setLevel(this.level + 1);
+      else if (action === 'menu') this.toggleMenu();
       return;
     }
     if (this.overlay !== 'none' || this.drag) return;
