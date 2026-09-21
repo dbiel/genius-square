@@ -463,7 +463,7 @@ export class App {
           <p><b>Tap a greyed-out</b> piece in the tray to pull it back off the board.</p>
           <p><b>Menu:</b> New starts a new puzzle at the chosen Level (1 easiest, ${LEVEL_COUNT} hardest); the dice picks any level and any puzzle. Timer and Sound switch the clock and audio. Times lists your fastest solves on this device and everyone's fastest overall. Puzzle # jumps to any puzzle by number.</p>
           <p><b>Links:</b> the address bar always shows the current puzzle, like /12345. Share it and someone else gets the same roll.</p>
-          <p><b>Install:</b> in Safari tap Share, then Add to Home Screen. It works offline after that.</p>
+          <p><b>Install:</b> in Safari tap Share, then Add to Home Screen. It works offline after that, and solves made offline are sent to the Times board automatically the next time the app opens with a connection.</p>
 
           <h3>PUZZLE STATS</h3>
           <p>Every one of the ${fmt(PUZZLE_COUNT)} rolls was solved every possible way by computer. All together that's ${fmt(TOTAL_SOLUTIONS)} solutions. Fewer solutions means a harder puzzle, so the rolls are ranked by solution count and split into ${LEVEL_COUNT} equal levels.</p>

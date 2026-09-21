@@ -8,7 +8,9 @@ import {
   doc,
   getDoc,
   getDocs,
-  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   limit,
   onSnapshot,
   orderBy,
@@ -85,9 +87,20 @@ export interface TimeEntry {
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
 
+/**
+ * Firestore with a persistent on-device cache: writes made offline (a solve on
+ * a plane) are queued in IndexedDB and sent automatically the next time the
+ * app is open with a connection. No save button needed.
+ */
 function firestore(): Firestore {
   app ??= initializeApp(firebaseConfig);
-  db ??= getFirestore(app);
+  if (!db) {
+    try {
+      db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+    } catch {
+      db = initializeFirestore(app, {});
+    }
+  }
   return db;
 }
 
