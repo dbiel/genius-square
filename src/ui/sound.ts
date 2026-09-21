@@ -60,8 +60,18 @@ export const sound = {
   error(): void {
     play([[180, 90], [140, 140]], 'sawtooth', 0.06);
   },
+  /** Herald's fanfare for a new roll: doo, doo, doo, doooo (C5 C5 C5 G5). Brassy sawtooth. */
   roll(): void {
-    play([[200, 40], [260, 40], [320, 40], [400, 40], [520, 60]], 'square', 0.05);
+    play(
+      [
+        [523, 140],
+        [523, 140],
+        [523, 140],
+        [[784, 392], 650],
+      ],
+      'sawtooth',
+      0.045,
+    );
   },
   /**
    * Zelda-style "item get" fanfare: da, da, da, DAAAA. Three quick rising notes
