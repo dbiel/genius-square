@@ -97,6 +97,7 @@ button.icon.off::after {
   transform: rotate(-45deg);
 }
 button.icon.help { color: var(--accent); }
+button.icon.quiet { color: var(--dim); border-color: var(--dim); }
 
 @media (max-width: 480px) {
   .topbar .status { order: 3; width: 100%; justify-content: space-between; }
@@ -113,7 +114,8 @@ button.icon.help { color: var(--accent); }
 
 .status { display: flex; gap: 14px; color: var(--dim); align-items: center; }
 .status .clock { color: var(--ink); min-width: 5ch; text-align: right; }
-.status .clock.hidden { visibility: hidden; }
+.status .clock { cursor: pointer; }
+.status .clock.hidden { display: none; }
 
 .stage {
   flex: 1;

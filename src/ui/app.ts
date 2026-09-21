@@ -193,10 +193,10 @@ export class App {
         <div class="title">GENIUS SQUARE</div>
         <div class="status">
           <span class="puzzle">#${String(this.game.seed).padStart(5, '0')} LV${levelOf(this.game.seed)}${this.toBeat ? `<small class="tobeat">TO BEAT ${formatMs(this.toBeat.ms)} ${escapeHtml(this.toBeat.name)}</small>` : ''}</span>
-          <span class="clock ${this.showTimer ? '' : 'hidden'}">${formatMs(this.game.elapsedMs())}</span>
+          <span class="clock ${this.showTimer ? '' : 'hidden'}" data-action="timer" title="Tap to hide the clock">${formatMs(this.game.elapsedMs())}</span>
         </div>
         <div class="icons">
-          <button class="icon ${this.showTimer ? '' : 'off'}" data-action="timer" aria-label="Timer" title="Show or hide the clock">${ICON_CLOCK}</button>
+          <button class="icon ${this.showTimer ? '' : 'quiet'}" data-action="timer" aria-label="Timer" title="Show or hide the clock">${ICON_CLOCK}</button>
           <button class="icon ${sound.isMuted() ? 'off' : ''}" data-action="mute" aria-label="Sound" title="Sound on or off">${ICON_SOUND}</button>
           <button class="icon help" data-action="help" aria-label="Help" title="How to play">?</button>
           <button class="burger" data-action="menu" aria-label="Menu"><span></span><span></span><span></span></button>
