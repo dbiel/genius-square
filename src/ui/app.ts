@@ -309,6 +309,7 @@ export class App {
   private toggleMenu(): void {
     this.menuOpen = !this.menuOpen;
     sound.unlock();
+    if (this.menuOpen) sound.menu();
     this.render();
   }
 
@@ -380,7 +381,7 @@ export class App {
       };
       this.overlay = 'won';
       this.render();
-      sound.win();
+      sound.win(this.won.overallNew);
       this.confetti();
       return;
     }
