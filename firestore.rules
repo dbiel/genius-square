@@ -12,16 +12,20 @@ service cloud.firestore {
       allow read: if true;
       allow create: if code.matches('^[A-HJ-NP-Z]{4}$')
         && isSeed(request.resource.data.seed)
-        && request.resource.data.keys().hasOnly(['seed', 'createdAt', 'proposal']);
-      allow update: if request.resource.data.keys().hasOnly(['seed', 'createdAt', 'proposal'])
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.keys().hasOnly(['seed', 'createdAt', 'proposal', 'expiresAt']);
+      allow update: if request.resource.data.keys().hasOnly(['seed', 'createdAt', 'proposal', 'expiresAt'])
+        && request.resource.data.expiresAt is timestamp
         && isSeed(request.resource.data.seed);
-      allow delete: if false;
+      // Anyone may sweep a room a day after its last activity (no billing, so no TTL policy).
+      allow delete: if resource.data.expiresAt < request.time;
 
       match /players/{playerId} {
         allow read: if true;
         allow write: if request.resource == null
           || (isName(request.resource.data.name)
-            && request.resource.data.keys().hasOnly(['name', 'joinedAt', 'lastSeen', 'placed', 'solvedMs', 'seed', 'placements'])
+            && request.resource.data.keys().hasOnly(['name', 'joinedAt', 'lastSeen', 'placed', 'solvedMs', 'seed', 'placements', 'expiresAt'])
+            && request.resource.data.expiresAt is timestamp
             && request.resource.data.placed is int && request.resource.data.placed >= 0 && request.resource.data.placed <= 29);
       }
     }

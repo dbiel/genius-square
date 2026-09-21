@@ -36,6 +36,7 @@ const PLAYER_ID_KEY = 'gs.playerId';
 // Chunky pixel icons, drawn on an 8x8 grid so they match the font.
 const ICON_CLOCK = `<svg viewBox="0 0 8 8" shape-rendering="crispEdges"><path fill="currentColor" d="M2 0h4v1H2zM1 1h1v1H1zM6 1h1v1H6zM0 2h1v4H0zM7 2h1v4H7zM1 6h1v1H1zM6 6h1v1H6zM2 7h4v1H2zM3 2h1v3H3zM4 4h2v1H4z"/></svg>`;
 const ICON_DICE = `<svg viewBox="0 0 8 8" shape-rendering="crispEdges"><path fill="currentColor" d="M1 0h6v1H1zM0 1h8v6H0zM1 7h6v1H1z"/><path fill="#0b0b14" d="M2 2h1v1H2zM5 2h1v1H5zM3.5 3.5h1v1h-1zM2 5h1v1H2zM5 5h1v1H5z"/></svg>`;
+const ICON_SHARE = `<svg viewBox="0 0 8 8" shape-rendering="crispEdges"><path fill="currentColor" d="M4 0h1v1H4zM3 1h1v1H3zM5 1h1v1H5zM2 2h1v1H2zM6 2h1v1H6zM4 1h1v5H4zM1 4h1v4H1zM2 7h5v1H2zM7 4h1v4H7zM1 3h2v1H1zM6 3h2v1H6z"/></svg>`;
 const ICON_SOUND = `<svg viewBox="0 0 8 8" shape-rendering="crispEdges"><path fill="currentColor" d="M0 3h1v2H0zM1 2h1v4H1zM2 1h1v6H2zM3 0h1v8H3zM5 2h1v1H5zM6 1h1v1H6zM5 5h1v1H5zM6 6h1v1H6zM7 2h1v4H7z"/></svg>`;
 
 interface Drag {
@@ -68,6 +69,18 @@ function seedFromLocation(): number | undefined {
   if (!/^\d{1,5}$/.test(raw)) return undefined;
   const n = Number(raw);
   return n < PUZZLE_COUNT ? n : undefined;
+}
+
+/** ?beat=<ms>&by=<name> on a puzzle link is a challenge. */
+function challengeFromLocation(): { name: string; ms: number } | null {
+  const q = new URLSearchParams(location.search);
+  const ms = Number(q.get('beat'));
+  const name = (q.get('by') ?? '').trim().slice(0, 16);
+  return Number.isInteger(ms) && ms > 0 && name ? { name, ms } : null;
+}
+
+function challengeUrl(seed: number, ms: number, name: string): string {
+  return `${location.origin}/${seed}?beat=${ms}&by=${encodeURIComponent(name)}`;
 }
 
 interface Best {
@@ -147,6 +160,10 @@ export class App {
   private announced = new Set<string>();
   /** Player being watched live, if any. */
   private watching: string | null = null;
+  /** Challenge carried in by the link, for the current puzzle only. */
+  private challenge: { name: string; ms: number } | null = null;
+  private shareNote = '';
+  private booted = false;
   private roomBusy = false;
   private roomError = '';
   private toBeat: TimeEntry | null = null;
@@ -176,6 +193,7 @@ export class App {
     setInterval(() => this.tickClock(), 250);
     window.addEventListener('pagehide', () => void this.room?.leave());
     this.fit();
+    this.challenge = challengeFromLocation();
     this.startRoll(seedFromLocation());
   }
 
@@ -209,7 +227,7 @@ export class App {
       <header class="topbar">
         <div class="title">GENIUS SQUARE</div>
         <div class="status">
-          <span class="puzzle">#${String(this.game.seed).padStart(5, '0')} LV${levelOf(this.game.seed)}${this.toBeat ? `<small class="tobeat">TO BEAT ${formatMs(this.toBeat.ms)} ${escapeHtml(this.toBeat.name)}</small>` : ''}</span>
+          <span class="puzzle">#${String(this.game.seed).padStart(5, '0')} LV${levelOf(this.game.seed)}${this.challenge ? `<small class="tobeat challenge">CHALLENGE FROM ${escapeHtml(this.challenge.name).toUpperCase()}: ${formatMs(this.challenge.ms)}</small>` : this.toBeat ? `<small class="tobeat">TO BEAT ${formatMs(this.toBeat.ms)} ${escapeHtml(this.toBeat.name)}</small>` : ''}</span>
           ${this.showTimer
             ? `<span class="clock" data-action="timer" title="Tap to hide the clock">${formatMs(this.game.elapsedMs())}</span>`
             : `<button class="icon small" data-action="timer" aria-label="Show clock" title="Tap to show the clock">${ICON_CLOCK}</button>`}
@@ -372,6 +390,7 @@ export class App {
     const row = (r: { seed: number; ms: number; at: number; name?: string }, top: boolean) => `<div class="best-row ${top ? 'top' : ''}">
         <span class="best-time">${formatMs(r.ms)}</span>
         <span class="best-info">${r.name ? `${escapeHtml(r.name)} ` : ''}#${String(r.seed).padStart(5, '0')} LV${levelOf(r.seed)}<small>${formatDate(r.at)}</small></span>
+        <button class="btn ghost step tiny" data-action="share" data-seed="${r.seed}" data-ms="${r.ms}" data-name="${escapeHtml(r.name ?? this.playerName)}" aria-label="Share">${ICON_SHARE}</button>
         <button class="btn ghost step" data-action="play" data-seed="${r.seed}">Play</button>
       </div>`;
 
@@ -469,7 +488,10 @@ export class App {
           PUZZLE #${this.game.seed} BEST: ${formatMs(w.puzzleBest)}${w.puzzleNew ? ' <span class="best">NEW!</span>' : ''}<br>
           PERSONAL BEST: ${formatMs(w.overallBest)}${this.toBeat && this.toBeat.ms < w.ms ? `<br>TO BEAT: ${formatMs(this.toBeat.ms)} BY ${escapeHtml(this.toBeat.name).toUpperCase()}` : ''}
         </p>
+        ${this.challenge ? `<p class="pb ${w.ms < this.challenge.ms ? '' : 'stands'}">${w.ms < this.challenge.ms ? `YOU BEAT ${escapeHtml(this.challenge.name).toUpperCase()}'S ${formatMs(this.challenge.ms)}!` : `${escapeHtml(this.challenge.name).toUpperCase()}'S ${formatMs(this.challenge.ms)} STANDS`}</p>` : ''}
         ${w.overallNew ? '<p class="pb">PERSONAL BEST!</p>' : ''}
+        <button class="btn ghost wide" data-action="share" data-seed="${this.game.seed}" data-ms="${w.ms}" data-name="${escapeHtml(this.playerName)}">Challenge a friend</button>
+        ${this.shareNote ? `<p class="menu-sub">${escapeHtml(this.shareNote)}</p>` : ''}
         ${this.roomState ? this.roomState.players.filter((x) => x.id !== this.playerId).map((x) => `<button class="btn ghost wide" data-action="watch" data-player="${x.id}">${x.solvedMs !== null ? `${escapeHtml(x.name)} ${formatMs(x.solvedMs)}` : `Watch ${escapeHtml(x.name)} (${x.placed}/29)`}</button>`).join('') : ''}
         <button class="btn primary" data-action="roll">New puzzle</button>
       </div></div><canvas class="confetti"></canvas>`;
@@ -504,6 +526,10 @@ export class App {
 
   private startRoll(seed?: number): void {
     this.onRollStart?.();
+    // A link's challenge applies only to the puzzle it came with (the first roll).
+    if (this.booted) this.challenge = null;
+    this.booted = true;
+    this.shareNote = '';
     this.flashId = null;
     this.menuOpen = false;
     this.watching = null;
@@ -617,6 +643,28 @@ export class App {
     this.watching = null;
     this.render();
     await room?.leave();
+  }
+
+  /** Share sheet on phones (text + link); just the link to the clipboard elsewhere. */
+  private async share(seed: number, ms: number, name: string): Promise<void> {
+    sound.unlock();
+    sound.rotate();
+    const url = challengeUrl(seed, ms, name);
+    const text = `${name} solved Genius Square puzzle #${seed} (level ${levelOf(seed)}) in ${formatMs(ms)}. Think you can beat it?`;
+    const nav = navigator as Navigator & { share?: (d: { title?: string; text?: string; url?: string }) => Promise<void> };
+    const mobile = /iPhone|iPad|Android/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+    try {
+      if (mobile && nav.share) {
+        await nav.share({ title: 'Genius Square challenge', text, url });
+        this.shareNote = 'Shared!';
+      } else {
+        await navigator.clipboard.writeText(url);
+        this.shareNote = 'Link copied';
+      }
+    } catch {
+      this.shareNote = url;
+    }
+    this.render();
   }
 
   private async loadToBeat(seed: number): Promise<void> {
@@ -770,6 +818,7 @@ export class App {
       else if (action === 'leave') void this.leaveRoom();
       else if (action === 'watch') { this.watching = button.dataset.player ?? null; sound.rotate(); this.render(); }
       else if (action === 'unwatch') { this.watching = null; this.render(); }
+      else if (action === 'share') void this.share(Number(button.dataset.seed), Number(button.dataset.ms), button.dataset.name ?? this.playerName);
       else if (action === 'play') this.roll(Number(button.dataset.seed));
       return;
     }

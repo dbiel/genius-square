@@ -480,3 +480,8 @@ svg.board.watched .placed { cursor: default; }
 
 .level .dice { margin-left: 8px; }
 .level .dice svg { width: 20px; height: 20px; display: block; margin: 0 auto; }
+
+.tobeat.challenge { color: var(--accent); }
+.overlay p.pb.stands { color: var(--dim); animation: none; }
+.best-row .tiny { min-width: 36px; padding: 6px; min-height: 32px; }
+.best-row .tiny svg { width: 14px; height: 14px; display: block; margin: 0 auto; }

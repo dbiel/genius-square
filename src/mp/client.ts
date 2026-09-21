@@ -15,9 +15,10 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  Timestamp,
+  where,
   updateDoc,
   type Firestore,
-  type Timestamp,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { firebaseConfig } from './firebase-config';
@@ -25,6 +26,34 @@ import { assignName, makeRoomCode, normalizeRoomCode, rollAgreed, type RoomPlaye
 
 const HEARTBEAT_MS = 20_000;
 const ONLINE_WINDOW_MS = 60_000;
+/** Rooms and players are deleted by a Firestore TTL policy a day after their last activity. */
+const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
+
+function expiry(): Timestamp {
+  return Timestamp.fromMillis(Date.now() + ROOM_TTL_MS);
+}
+
+/**
+ * Delete a few rooms nobody has touched for a day (players first, then the
+ * room). Runs whenever someone creates a room, so the collection stays small
+ * without a server. Best effort.
+ */
+export async function sweepExpiredRooms(max = 5): Promise<number> {
+  const d = firestore();
+  const stale = await getDocs(query(collection(d, 'rooms'), where('expiresAt', '<', Timestamp.now()), limit(max)));
+  let removed = 0;
+  for (const room of stale.docs) {
+    try {
+      const players = await getDocs(collection(d, 'rooms', room.id, 'players'));
+      await Promise.all(players.docs.map((p) => deleteDoc(p.ref)));
+      await deleteDoc(room.ref);
+      removed++;
+    } catch {
+      /* someone else got it, or rules said no */
+    }
+  }
+  return removed;
+}
 
 /** A placed piece as sent over the wire: [orientation index, row, col]. */
 export type WirePlacements = Record<string, [number, number, number]>;
@@ -85,12 +114,13 @@ export class RoomClient {
 
   static async create(playerId: string, name: string, seed: number, onState: (s: RoomState) => void): Promise<RoomClient> {
     const d = firestore();
+    void sweepExpiredRooms().catch(() => undefined);
     let code = makeRoomCode();
     for (let tries = 0; tries < 5; tries++) {
       if (!(await getDoc(doc(d, 'rooms', code))).exists()) break;
       code = makeRoomCode();
     }
-    await setDoc(doc(d, 'rooms', code), { seed, createdAt: serverTimestamp() });
+    await setDoc(doc(d, 'rooms', code), { seed, createdAt: serverTimestamp(), expiresAt: expiry() });
     const client = new RoomClient(code, playerId, onState);
     await client.enter(name, seed, 1);
     return client;
@@ -117,8 +147,10 @@ export class RoomClient {
       placements: {},
       solvedMs: null,
       seed,
+      expiresAt: expiry(),
     });
-    this.heartbeat = setInterval(() => void updateDoc(this.playerRef(), { lastSeen: serverTimestamp() }).catch(() => undefined), HEARTBEAT_MS);
+    await updateDoc(doc(d, 'rooms', this.code), { expiresAt: expiry() }).catch(() => undefined);
+    this.heartbeat = setInterval(() => void updateDoc(this.playerRef(), { lastSeen: serverTimestamp(), expiresAt: expiry() }).catch(() => undefined), HEARTBEAT_MS);
     this.unsubs.push(
       onSnapshot(doc(d, 'rooms', this.code), (snap) => {
         const data = snap.data();
@@ -180,7 +212,7 @@ export class RoomClient {
     if (!rollAgreed(players, p.ready)) return;
     this.committingSeed = p.seed;
     try {
-      await updateDoc(doc(firestore(), 'rooms', this.code), { seed: p.seed, proposal: deleteField() });
+      await updateDoc(doc(firestore(), 'rooms', this.code), { seed: p.seed, proposal: deleteField(), expiresAt: expiry() });
     } finally {
       this.committingSeed = null;
     }
@@ -208,9 +240,9 @@ export class RoomClient {
     const room = doc(firestore(), 'rooms', this.code);
     const current = this.roomData?.proposal;
     if (current) {
-      await updateDoc(room, { [`proposal.ready.${this.playerId}`]: true });
+      await updateDoc(room, { [`proposal.ready.${this.playerId}`]: true, expiresAt: expiry() });
     } else {
-      await updateDoc(room, { proposal: { seed, by: this.playerId, ready: { [this.playerId]: true } } });
+      await updateDoc(room, { proposal: { seed, by: this.playerId, ready: { [this.playerId]: true } }, expiresAt: expiry() });
     }
   }
 
