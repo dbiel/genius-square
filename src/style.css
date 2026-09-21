@@ -231,6 +231,9 @@ button.btn.ghost.step:disabled { opacity: 0.3; cursor: default; transform: none;
 @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.08); } }
 
 .overlay p { font-size: 12px; margin: 8px 0 20px; color: var(--ink); line-height: 1.8; }
+.overlay p.time { font-size: 14px; margin-bottom: 6px; }
+.overlay p.bests { font-size: 9px; color: var(--dim); margin: 0 0 14px; line-height: 2; }
+.overlay p.pb { font-size: 13px; color: var(--accent-2); margin: 0 0 18px; animation: pulse 0.9s infinite alternate; }
 .overlay .best { color: var(--accent-2); }
 
 .dice {

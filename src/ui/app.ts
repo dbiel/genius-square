@@ -21,6 +21,7 @@ const TRAY_ROWS: PieceId[][] = [
 /** Tray height in board cells: the tallest slot of each row, summed. */
 const TRAY_CELLS = 3 + 4 + 3;
 const BEST_KEY = 'gs.best';
+const PUZZLE_BESTS_KEY = 'gs.puzzleBests';
 const TIMER_KEY = 'gs.showTimer';
 const MUTE_KEY = 'gs.mute';
 const LEVEL_KEY = 'gs.level';
@@ -60,6 +61,15 @@ function seedFromLocation(): number | undefined {
   return n < PUZZLE_COUNT ? n : undefined;
 }
 
+function readPuzzleBests(): Record<string, number> {
+  try {
+    const parsed: unknown = JSON.parse(readStorage(PUZZLE_BESTS_KEY) ?? '{}');
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
 function clampLevel(n: number): number {
   return Math.min(LEVEL_COUNT, Math.max(1, Math.round(n)));
 }
@@ -78,8 +88,7 @@ export class App {
   private playerName = (readStorage(NAME_KEY) ?? '').trim() || DEFAULT_NAME;
   private flashId: PieceId | null = null;
   private overlay: 'none' | 'rolling' | 'won' = 'none';
-  private wonIsBest = false;
-  private previousBest: string | null = null;
+  private won: { ms: number; puzzleBest: number; puzzleNew: boolean; overallBest: number; overallNew: boolean } | null = null;
   private diceFaces: string[] = [];
   private readonly root: HTMLElement;
 
@@ -93,6 +102,9 @@ export class App {
     window.addEventListener('pointerup', (e) => this.onPointerUp(e));
     window.addEventListener('pointercancel', (e) => this.onPointerUp(e));
     window.addEventListener('resize', () => this.fit());
+    window.addEventListener('keydown', (e) => {
+      if (e.key.toLowerCase() === 'h' && !(e.target instanceof HTMLInputElement) && this.overlay === 'none') this.hint();
+    });
     setInterval(() => this.tickClock(), 250);
     this.fit();
     this.roll(seedFromLocation());
@@ -224,14 +236,16 @@ export class App {
         .map((f) => `<div class="die rolling">${f}</div>`)
         .join('')}</div></div></div>`;
     }
-    if (this.overlay === 'won') {
-      const ms = this.game.elapsedMs();
-      const bestLine = this.wonIsBest
-        ? '<span class="best">NEW BEST!</span>'
-        : `<span class="best">BEST ${formatMs(Number(this.previousBest))}</span>`;
+    if (this.overlay === 'won' && this.won) {
+      const w = this.won;
       return `<div class="overlay"><div class="card">
         <h2>SOLVED!</h2>
-        <p>TIME ${formatMs(ms)}<br>${bestLine}</p>
+        <p class="time">TIME ${formatMs(w.ms)}</p>
+        <p class="bests">
+          PUZZLE #${this.game.seed} BEST: ${formatMs(w.puzzleBest)}${w.puzzleNew ? ' <span class="best">NEW!</span>' : ''}<br>
+          PERSONAL BEST: ${formatMs(w.overallBest)}
+        </p>
+        ${w.overallNew ? '<p class="pb">PERSONAL BEST!</p>' : ''}
         <button class="btn primary" data-action="roll">Roll again</button>
       </div></div><canvas class="confetti"></canvas>`;
     }
@@ -346,9 +360,24 @@ export class App {
     if (this.overlay === 'won') return;
     if (this.game.isSolved()) {
       const ms = this.game.elapsedMs();
-      this.previousBest = readStorage(BEST_KEY);
-      this.wonIsBest = this.previousBest === null || ms < Number(this.previousBest);
-      if (this.wonIsBest) writeStorage(BEST_KEY, String(ms));
+      const seed = String(this.game.seed);
+      const puzzleBests = readPuzzleBests();
+      const prevPuzzle = puzzleBests[seed];
+      const puzzleNew = prevPuzzle === undefined || ms < prevPuzzle;
+      if (puzzleNew) {
+        puzzleBests[seed] = ms;
+        writeStorage(PUZZLE_BESTS_KEY, JSON.stringify(puzzleBests));
+      }
+      const prevOverall = readStorage(BEST_KEY);
+      const overallNew = prevOverall === null || ms < Number(prevOverall);
+      if (overallNew) writeStorage(BEST_KEY, String(ms));
+      this.won = {
+        ms,
+        puzzleBest: puzzleNew ? ms : prevPuzzle!,
+        puzzleNew,
+        overallBest: overallNew ? ms : Number(prevOverall),
+        overallNew,
+      };
       this.overlay = 'won';
       this.render();
       sound.win();
