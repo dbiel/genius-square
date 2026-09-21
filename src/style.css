@@ -135,7 +135,7 @@ svg.board {
 
 .tray .slot { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 
-.tray .piece.placed { opacity: 0.18; pointer-events: none; }
+.tray .piece.placed { opacity: 0.22; cursor: pointer; }
 
 button.flip {
   font-family: var(--font);

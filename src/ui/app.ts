@@ -468,6 +468,14 @@ export class App {
     if (!el) return;
     e.preventDefault();
     const id = el.dataset.piece as PieceId;
+    if (el.classList.contains('placed')) {
+      // Recall: a greyed-out tray piece comes back off the board.
+      sound.unlock();
+      sound.pickUp();
+      this.game.pickUp(id);
+      this.render();
+      return;
+    }
     const cells = this.game.orientation(id);
     const cell = this.cellPx();
     const rect = el.getBoundingClientRect();
