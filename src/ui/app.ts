@@ -7,6 +7,8 @@ import { UNIT, pegSvg, pieceBounds, pieceSvg } from './tiles';
 import { sound } from './sound';
 import { LEVEL_COUNT, levelOf, randomSeedForLevel } from '../core/levels';
 import { LEVEL_BANDS, TOTAL_SOLUTIONS } from '../core/levels-data';
+import { RoomClient, bestTimeFor, recordTime, topTimes, type RoomState, type TimeEntry } from '../mp/client';
+import { isRoomCode } from '../mp/rules';
 import { PUZZLE_COUNT } from '../core/dice';
 
 const MARGIN = 0.9; // label gutter, in cells
@@ -29,6 +31,7 @@ const LEVEL_KEY = 'gs.level';
 const DEFAULT_LEVEL = 3;
 const NAME_KEY = 'gs.name';
 const DEFAULT_NAME = 'Player 1';
+const PLAYER_ID_KEY = 'gs.playerId';
 
 interface Drag {
   id: PieceId;
@@ -95,6 +98,14 @@ function formatDate(at: number): string {
   return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+function playerIdentity(): string {
+  const existing = readStorage(PLAYER_ID_KEY);
+  if (existing) return existing;
+  const id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  writeStorage(PLAYER_ID_KEY, id);
+  return id;
+}
+
 function clampLevel(n: number): number {
   return Math.min(LEVEL_COUNT, Math.max(1, Math.round(n)));
 }
@@ -110,7 +121,17 @@ export class App {
   private showTimer = readStorage(TIMER_KEY) !== '0';
   private level = clampLevel(Number(readStorage(LEVEL_KEY)) || DEFAULT_LEVEL);
   private menuOpen = false;
-  private menuView: 'main' | 'bests' | 'help' = 'main';
+  private bestsSort: 'fastest' | 'recent' = 'fastest';
+  private menuView: 'main' | 'bests' | 'help' | 'mp' | 'times' = 'main';
+  private readonly playerId = playerIdentity();
+  private room: RoomClient | null = null;
+  private roomState: RoomState | null = null;
+  private roomBusy = false;
+  private roomError = '';
+  private toBeat: TimeEntry | null = null;
+  private times: TimeEntry[] | null = null;
+  /** Called just before a new roll starts; main.ts uses it to apply a waiting update. */
+  onRollStart: (() => void) | null = null;
   private playerName = (readStorage(NAME_KEY) ?? '').trim() || DEFAULT_NAME;
   private flashId: PieceId | null = null;
   private overlay: 'none' | 'rolling' | 'won' = 'none';
@@ -132,8 +153,9 @@ export class App {
       if (e.key.toLowerCase() === 'h' && !(e.target instanceof HTMLInputElement) && this.overlay === 'none') this.hint();
     });
     setInterval(() => this.tickClock(), 250);
+    window.addEventListener('pagehide', () => void this.room?.leave());
     this.fit();
-    this.roll(seedFromLocation());
+    this.startRoll(seedFromLocation());
   }
 
   // ---------- layout ----------
@@ -166,11 +188,12 @@ export class App {
       <header class="topbar">
         <div class="title">GENIUS SQUARE</div>
         <div class="status">
-          <span class="puzzle">#${String(this.game.seed).padStart(5, '0')} LV${levelOf(this.game.seed)}</span>
+          <span class="puzzle">#${String(this.game.seed).padStart(5, '0')} LV${levelOf(this.game.seed)}${this.toBeat ? `<small class="tobeat">TO BEAT ${formatMs(this.toBeat.ms)} ${escapeHtml(this.toBeat.name)}</small>` : ''}</span>
           <span class="clock ${this.showTimer ? '' : 'hidden'}">${formatMs(this.game.elapsedMs())}</span>
           <button class="burger" data-action="menu" aria-label="Menu"><span></span><span></span><span></span></button>
         </div>
       </header>
+      ${this.roomStripHtml()}
       <section class="stage">
         <div class="board-wrap">${this.boardSvg()}</div>
         <div class="tray">${this.trayHtml()}</div>
@@ -224,7 +247,12 @@ export class App {
 
   private menuHtml(): string {
     if (!this.menuOpen) return '';
-    const body = this.menuView === 'bests' ? this.bestsHtml() : this.menuView === 'help' ? this.helpHtml() : this.mainMenuHtml();
+    const body =
+      this.menuView === 'bests' ? this.bestsHtml()
+      : this.menuView === 'help' ? this.helpHtml()
+      : this.menuView === 'mp' ? this.mpHtml()
+      : this.menuView === 'times' ? this.timesHtml()
+      : this.mainMenuHtml();
     return `<div class="menu-backdrop" data-action="menu"></div><aside class="menu ${this.menuView === 'help' ? 'wide' : ''}">${body}</aside>`;
   }
 
@@ -256,8 +284,10 @@ export class App {
             <button class="btn ghost" type="submit">Go</button>
           </div>
         </form>
-        <button class="btn ghost wide" disabled>Multiplayer <small>soon</small></button>
-        <button class="btn ghost wide" disabled>Times <small>soon</small></button>`;
+        <div class="menu-row">
+          <button class="btn ghost ${this.room ? 'on' : ''}" data-action="mp">${this.room ? `Room ${this.room.code}` : 'Multiplayer'}</button>
+          <button class="btn ghost" data-action="times">Times</button>
+        </div>`;
   }
 
   private bestsHtml(): string {
@@ -265,7 +295,7 @@ export class App {
     const top = overallBest(bests);
     const rows = Object.entries(bests)
       .map(([seed, b]) => ({ seed: Number(seed), ...b }))
-      .sort((a, b) => a.ms - b.ms || a.seed - b.seed);
+      .sort((a, b) => (this.bestsSort === 'recent' ? b.at - a.at || a.ms - b.ms : a.ms - b.ms || a.seed - b.seed));
     const list = rows.length
       ? rows
           .map(
@@ -283,8 +313,70 @@ export class App {
           <span>PERSONAL BEST</span>
           ${top ? `<strong>${formatMs(top.ms)}</strong><small>puzzle #${String(top.seed).padStart(5, '0')}</small>` : '<strong>--:--</strong>'}
         </div>
-        <div class="menu-sub">${rows.length} PUZZLE${rows.length === 1 ? '' : 'S'} SOLVED, FASTEST FIRST</div>
+        <div class="menu-row sort">
+          <span class="menu-sub">${rows.length} PUZZLE${rows.length === 1 ? '' : 'S'} SOLVED</span>
+          <button class="btn ghost step ${this.bestsSort === 'fastest' ? 'on' : ''}" data-action="sort-fastest">Fastest</button>
+          <button class="btn ghost step ${this.bestsSort === 'recent' ? 'on' : ''}" data-action="sort-recent">Recent</button>
+        </div>
         <div class="best-list">${list}</div>`;
+  }
+
+  private mpHtml(): string {
+    const head = `<div class="menu-head"><button class="btn ghost step" data-action="menu-main">&lt;</button><span>MULTIPLAYER</span><button class="btn ghost step" data-action="menu">X</button></div>`;
+    if (this.room && this.roomState) {
+      const players = this.roomState.players
+        .map((p) => `<div class="best-row ${p.online ? '' : 'offline'}"><span class="best-time">${p.solvedMs !== null ? formatMs(p.solvedMs) : `${p.placed}/29`}</span><span class="best-info">${escapeHtml(p.name)}${p.id === this.playerId ? ' (you)' : ''}<small>${p.online ? 'online' : 'away'}</small></span></div>`)
+        .join('');
+      return `${head}
+        <div class="pb-box"><span>ROOM CODE</span><strong>${this.room.code}</strong><small>friends join from the menu with this code</small></div>
+        <div class="menu-sub">${this.roomState.players.length} PLAYER${this.roomState.players.length === 1 ? '' : 'S'}, SAME PUZZLE</div>
+        <div class="best-list">${players}</div>
+        <p class="menu-note">Roll asks everyone to roll. The new puzzle starts when all players have pressed Roll.</p>
+        <button class="btn ghost wide" data-action="leave">Leave room</button>`;
+    }
+    return `${head}
+        <p class="menu-note">Play the same puzzle as your friends and see each other's progress live.</p>
+        <button class="btn primary wide" data-action="create-room" ${this.roomBusy ? 'disabled' : ''}>Create a room</button>
+        <form class="menu-field" data-form="join">
+          <span>OR JOIN WITH A CODE</span>
+          <div class="menu-row">
+            <input class="name code ${this.roomError ? 'bad' : ''}" name="code" type="text" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="ABCD" />
+            <button class="btn ghost" type="submit" ${this.roomBusy ? 'disabled' : ''}>Join</button>
+          </div>
+          ${this.roomError ? `<span class="menu-error">${escapeHtml(this.roomError)}</span>` : ''}
+        </form>`;
+  }
+
+  private timesHtml(): string {
+    const head = `<div class="menu-head"><button class="btn ghost step" data-action="menu-main">&lt;</button><span>TIMES</span><button class="btn ghost step" data-action="menu">X</button></div>`;
+    if (!this.times) return `${head}<p class="menu-note">Loading…</p>`;
+    const rows = this.times.length
+      ? this.times
+          .map((t, i) => `<div class="best-row ${i === 0 ? 'top' : ''}"><span class="best-time">${formatMs(t.ms)}</span><span class="best-info">${escapeHtml(t.name)}<small>#${String(t.seed).padStart(5, '0')} LV${levelOf(t.seed)} ${formatDate(t.at)}</small></span><button class="btn ghost step" data-action="play" data-seed="${t.seed}">Play</button></div>`)
+          .join('')
+      : '<p class="menu-note">No times yet.</p>';
+    return `${head}<div class="menu-sub">FASTEST SOLVES, EVERYONE</div><div class="best-list">${rows}</div>`;
+  }
+
+  private roomStripHtml(): string {
+    if (!this.room || !this.roomState) return '';
+    const st = this.roomState;
+    const p = st.proposal;
+    const ready = p?.ready ?? {};
+    const iAgreed = ready[this.playerId] === true;
+    const proposer = p ? st.players.find((x) => x.id === p.by)?.name ?? 'Someone' : '';
+    const waiting = p ? st.players.filter((x) => x.online && !ready[x.id]).map((x) => x.name) : [];
+    const players = st.players
+      .map((x) => `<div class="rp ${x.online ? '' : 'offline'} ${x.solvedMs !== null ? 'done' : ''}">
+          <span class="rp-name">${escapeHtml(x.name)}</span>
+          <span class="rp-bar"><span style="width:${Math.round((x.placed / 29) * 100)}%"></span></span>
+          <span class="rp-time">${x.solvedMs !== null ? formatMs(x.solvedMs) : `${x.placed}/29`}</span>
+        </div>`)
+      .join('');
+    const banner = p
+      ? `<div class="rp-banner">${iAgreed ? `WAITING FOR ${waiting.map(escapeHtml).join(', ') || '…'}` : `${escapeHtml(proposer)} WANTS TO ROLL`}${iAgreed ? '' : ' <button class="btn primary step" data-action="roll">Roll</button>'}</div>`
+      : '';
+    return `<section class="room"><div class="rp-head">ROOM ${this.room.code}</div>${players}${banner}</section>`;
   }
 
   private helpHtml(): string {
@@ -332,7 +424,7 @@ export class App {
         <p class="time">TIME ${formatMs(w.ms)}</p>
         <p class="bests">
           PUZZLE #${this.game.seed} BEST: ${formatMs(w.puzzleBest)}${w.puzzleNew ? ' <span class="best">NEW!</span>' : ''}<br>
-          PERSONAL BEST: ${formatMs(w.overallBest)}
+          PERSONAL BEST: ${formatMs(w.overallBest)}${this.toBeat && this.toBeat.ms < w.ms ? `<br>TO BEAT: ${formatMs(this.toBeat.ms)} BY ${escapeHtml(this.toBeat.name).toUpperCase()}` : ''}
         </p>
         ${w.overallNew ? '<p class="pb">PERSONAL BEST!</p>' : ''}
         <button class="btn primary" data-action="roll">Roll again</button>
@@ -349,6 +441,25 @@ export class App {
   // ---------- actions ----------
 
   private roll(seed?: number): void {
+    if (this.room && this.overlay !== 'rolling') {
+      this.menuOpen = false;
+      sound.unlock();
+      sound.rotate();
+      void this.room.roll(seed ?? randomSeedForLevel(this.level)).catch(() => undefined);
+      this.render();
+      return;
+    }
+    this.startRoll(seed);
+  }
+
+  /** Roll locally (solo, or the room agreed on a seed). */
+  /** True when no piece is on the board and nothing is in progress: safe to reload. */
+  isIdle(): boolean {
+    return this.overlay === 'none' && this.game.board.placements.size === 0 && !this.room;
+  }
+
+  private startRoll(seed?: number): void {
+    this.onRollStart?.();
     this.flashId = null;
     this.menuOpen = false;
     this.overlay = 'rolling';
@@ -368,6 +479,9 @@ export class App {
           this.game = target;
           this.overlay = 'none';
           history.replaceState(null, '', `/${target.seed}`);
+          this.toBeat = null;
+          void this.loadToBeat(target.seed);
+          void this.room?.startPuzzle(target.seed);
           this.render();
         }, 700);
       }
@@ -395,6 +509,81 @@ export class App {
     this.afterMove();
   }
 
+  // ---------- multiplayer ----------
+
+  private onRoomState(state: RoomState): void {
+    const first = this.roomState === null;
+    this.roomState = state;
+    if ((first || state.seed !== this.game.seed) && this.overlay !== 'rolling' && state.seed !== this.game.seed) {
+      this.startRoll(state.seed);
+      return;
+    }
+    this.render();
+  }
+
+  private async createRoom(): Promise<void> {
+    if (this.roomBusy) return;
+    this.roomBusy = true;
+    this.roomError = '';
+    this.render();
+    try {
+      this.room = await RoomClient.create(this.playerId, this.playerName, this.game.seed, (s) => this.onRoomState(s));
+      sound.menu();
+    } catch (err) {
+      this.roomError = 'Could not create a room. Online?';
+      console.error(err);
+    } finally {
+      this.roomBusy = false;
+      this.render();
+    }
+  }
+
+  private async joinRoom(code: string): Promise<void> {
+    if (this.roomBusy) return;
+    this.roomBusy = true;
+    this.roomError = '';
+    this.render();
+    try {
+      this.room = await RoomClient.join(this.playerId, this.playerName, code, (s) => this.onRoomState(s));
+      sound.menu();
+    } catch (err) {
+      this.roomError = err instanceof Error && /No room/.test(err.message) ? 'No room with that code' : 'Could not join. Online?';
+      console.error(err);
+    } finally {
+      this.roomBusy = false;
+      this.render();
+    }
+  }
+
+  private async leaveRoom(): Promise<void> {
+    const room = this.room;
+    this.room = null;
+    this.roomState = null;
+    this.render();
+    await room?.leave();
+  }
+
+  private async loadToBeat(seed: number): Promise<void> {
+    try {
+      const best = await bestTimeFor(seed);
+      if (this.game.seed === seed) {
+        this.toBeat = best;
+        this.render();
+      }
+    } catch {
+      /* offline */
+    }
+  }
+
+  private async loadTimes(): Promise<void> {
+    try {
+      this.times = await topTimes(10);
+    } catch {
+      this.times = [];
+    }
+    if (this.menuView === 'times') this.render();
+  }
+
   private toggleMenu(): void {
     this.menuOpen = !this.menuOpen;
     this.menuView = 'main';
@@ -406,6 +595,17 @@ export class App {
   private onSubmit(e: Event): void {
     e.preventDefault();
     const form = e.target as HTMLFormElement;
+    if (form.dataset.form === 'join') {
+      const input = form.elements.namedItem('code') as HTMLInputElement;
+      if (!isRoomCode(input.value)) {
+        this.roomError = 'Codes are 4 letters';
+        sound.error();
+        this.render();
+        return;
+      }
+      void this.joinRoom(input.value);
+      return;
+    }
     if (form.dataset.form !== 'puzzle') return;
     const input = form.elements.namedItem('puzzle') as HTMLInputElement;
     const n = Number(input.value.trim());
@@ -449,8 +649,11 @@ export class App {
 
   private afterMove(): void {
     if (this.overlay === 'won') return;
+    void this.room?.setPlaced(29 - this.game.board.emptyCount());
     if (this.game.isSolved()) {
       const ms = this.game.elapsedMs();
+      void this.room?.setSolved(ms);
+      recordTime({ name: this.playerName, ms, seed: this.game.seed, at: 0 }).catch(() => undefined);
       const seed = String(this.game.seed);
       const puzzleBests = readPuzzleBests();
       const prevPuzzle = puzzleBests[seed]?.ms;
@@ -497,6 +700,11 @@ export class App {
       else if (action === 'menu-main') { this.menuView = 'main'; this.render(); }
       else if (action === 'bests') { this.menuView = 'bests'; sound.rotate(); this.render(); }
       else if (action === 'help') { this.menuView = 'help'; sound.rotate(); this.render(); }
+      else if (action === 'mp') { this.menuView = 'mp'; this.roomError = ''; sound.rotate(); this.render(); }
+      else if (action === 'times') { this.menuView = 'times'; sound.rotate(); this.times = null; this.render(); void this.loadTimes(); }
+      else if (action === 'create-room') void this.createRoom();
+      else if (action === 'sort-fastest' || action === 'sort-recent') { this.bestsSort = action === 'sort-recent' ? 'recent' : 'fastest'; sound.rotate(); this.render(); }
+      else if (action === 'leave') void this.leaveRoom();
       else if (action === 'play') this.roll(Number(button.dataset.seed));
       return;
     }

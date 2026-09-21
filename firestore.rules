@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // A family puzzle game: no accounts. Anyone can read rooms and times;
+    // writes are shape-checked and size-limited so the data stays sane.
+
+    function isName(s) { return s is string && s.size() >= 1 && s.size() <= 16; }
+    function isSeed(n) { return n is int && n >= 0 && n < 62208; }
+    function isMs(n) { return n is int && n >= 0 && n < 86400000; }
+
+    match /rooms/{code} {
+      allow read: if true;
+      allow create: if code.matches('^[A-HJ-NP-Z]{4}$')
+        && isSeed(request.resource.data.seed)
+        && request.resource.data.keys().hasOnly(['seed', 'createdAt', 'proposal']);
+      allow update: if request.resource.data.keys().hasOnly(['seed', 'createdAt', 'proposal'])
+        && isSeed(request.resource.data.seed);
+      allow delete: if false;
+
+      match /players/{playerId} {
+        allow read: if true;
+        allow write: if request.resource == null
+          || (isName(request.resource.data.name)
+            && request.resource.data.keys().hasOnly(['name', 'joinedAt', 'lastSeen', 'placed', 'solvedMs', 'seed'])
+            && request.resource.data.placed is int && request.resource.data.placed >= 0 && request.resource.data.placed <= 29);
+      }
+    }
+
+    match /times/{seed}/entries/{entryId} {
+      allow read: if true;
+      allow create: if isName(request.resource.data.name)
+        && isMs(request.resource.data.ms)
+        && isSeed(request.resource.data.seed)
+        && request.resource.data.keys().hasOnly(['name', 'ms', 'seed', 'at']);
+      allow update, delete: if false;
+    }
+
+    match /times/{seed} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // The Times board reads every puzzle's entries at once (collection group query).
+    match /{path=**}/entries/{entryId} {
+      allow read: if true;
+    }
+  }
+}

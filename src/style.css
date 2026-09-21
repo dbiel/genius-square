@@ -388,3 +388,40 @@ table.stats { border-collapse: collapse; width: 100%; font-size: 8px; }
 table.stats th, table.stats td { border: 2px solid #2e2e3a; padding: 6px 6px; text-align: right; white-space: nowrap; }
 table.stats th { color: var(--dim); font-weight: normal; }
 table.stats td:first-child, table.stats th:first-child { text-align: center; color: var(--accent-2); }
+
+/* ---------- multiplayer ---------- */
+
+.tobeat { display: block; font-size: 7px; color: var(--accent-2); margin-top: 4px; }
+
+.room {
+  border: 3px solid var(--accent-2);
+  box-shadow: 4px 4px 0 #000;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 8px;
+  max-width: 560px;
+  width: 100%;
+  align-self: center;
+}
+
+.rp-head { color: var(--accent-2); font-size: 9px; }
+.rp { display: flex; align-items: center; gap: 8px; }
+.rp.offline { opacity: 0.45; }
+.rp.done .rp-time { color: var(--accent); }
+.rp-name { width: 9ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-bar { flex: 1; height: 10px; border: 2px solid #2e2e3a; background: var(--bg); }
+.rp-bar span { display: block; height: 100%; background: var(--accent-2); transition: width 0.2s; }
+.rp-time { width: 5ch; text-align: right; color: var(--dim); }
+.rp-banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--accent); padding-top: 4px; }
+.rp-banner .btn { min-height: 36px; padding: 8px 12px; font-size: 9px; min-width: 0; }
+
+.menu-error { font-size: 8px; color: var(--danger); }
+.best-row.offline { opacity: 0.5; }
+input.code { text-transform: uppercase; letter-spacing: 4px; }
+button.btn.ghost.on { border-color: var(--accent-2); color: var(--accent-2); }
+
+.menu-row.sort { align-items: center; }
+.menu-row.sort .menu-sub { flex: 1; }
+.menu-row.sort .step { flex: 0 0 auto; min-width: 64px; font-size: 8px; padding: 8px 6px; min-height: 34px; }
