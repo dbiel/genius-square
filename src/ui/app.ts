@@ -131,6 +131,8 @@ export class App {
   private readonly playerId = playerIdentity();
   private room: RoomClient | null = null;
   private roomState: RoomState | null = null;
+  /** Players whose finish we've already reacted to, per seed. */
+  private announced = new Set<string>();
   private roomBusy = false;
   private roomError = '';
   private toBeat: TimeEntry | null = null;
@@ -515,6 +517,16 @@ export class App {
   private onRoomState(state: RoomState): void {
     const first = this.roomState === null;
     this.roomState = state;
+    // Someone else finished this puzzle before me: play the sad Fifth once per player.
+    if (!first && state.seed === this.game.seed && !this.game.isSolved()) {
+      for (const p of state.players) {
+        const key = `${state.seed}:${p.id}`;
+        if (p.id !== this.playerId && p.solvedMs !== null && !this.announced.has(key)) {
+          this.announced.add(key);
+          sound.lose();
+        }
+      }
+    }
     if ((first || state.seed !== this.game.seed) && this.overlay !== 'rolling' && state.seed !== this.game.seed) {
       this.startRoll(state.seed);
       return;
