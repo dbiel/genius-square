@@ -6,6 +6,7 @@ import { BLOCKER_COLOR, BOARD_COLOR, PIECE_COLORS } from './colors';
 import { UNIT, pegSvg, pieceBounds, pieceSvg } from './tiles';
 import { sound } from './sound';
 import { LEVEL_COUNT, levelOf, randomSeedForLevel } from '../core/levels';
+import { LEVEL_BANDS, TOTAL_SOLUTIONS } from '../core/levels-data';
 import { PUZZLE_COUNT } from '../core/dice';
 
 const MARGIN = 0.9; // label gutter, in cells
@@ -109,7 +110,7 @@ export class App {
   private showTimer = readStorage(TIMER_KEY) !== '0';
   private level = clampLevel(Number(readStorage(LEVEL_KEY)) || DEFAULT_LEVEL);
   private menuOpen = false;
-  private menuView: 'main' | 'bests' = 'main';
+  private menuView: 'main' | 'bests' | 'help' = 'main';
   private playerName = (readStorage(NAME_KEY) ?? '').trim() || DEFAULT_NAME;
   private flashId: PieceId | null = null;
   private overlay: 'none' | 'rolling' | 'won' = 'none';
@@ -223,8 +224,8 @@ export class App {
 
   private menuHtml(): string {
     if (!this.menuOpen) return '';
-    const body = this.menuView === 'bests' ? this.bestsHtml() : this.mainMenuHtml();
-    return `<div class="menu-backdrop" data-action="menu"></div><aside class="menu">${body}</aside>`;
+    const body = this.menuView === 'bests' ? this.bestsHtml() : this.menuView === 'help' ? this.helpHtml() : this.mainMenuHtml();
+    return `<div class="menu-backdrop" data-action="menu"></div><aside class="menu ${this.menuView === 'help' ? 'wide' : ''}">${body}</aside>`;
   }
 
   private mainMenuHtml(): string {
@@ -240,7 +241,10 @@ export class App {
           <button class="btn ghost ${this.showTimer ? '' : 'off'}" data-action="timer">Timer</button>
           <button class="btn ghost ${sound.isMuted() ? 'off' : ''}" data-action="mute">Sound</button>
         </div>
-        <button class="btn ghost wide" data-action="bests">Bests</button>
+        <div class="menu-row">
+          <button class="btn ghost" data-action="bests">Bests</button>
+          <button class="btn ghost" data-action="help">Help</button>
+        </div>
         <label class="menu-field">
           <span>PLAYER</span>
           <input class="name" name="playerName" type="text" maxlength="16" autocomplete="off" autocapitalize="words" value="${escapeHtml(this.playerName)}" />
@@ -281,6 +285,38 @@ export class App {
         </div>
         <div class="menu-sub">${rows.length} PUZZLE${rows.length === 1 ? '' : 'S'} SOLVED, FASTEST FIRST</div>
         <div class="best-list">${list}</div>`;
+  }
+
+  private helpHtml(): string {
+    const fmt = (n: number) => n.toLocaleString('en-US');
+    const rows = LEVEL_BANDS.map(
+      ([puzzles, min, max, mean], i) =>
+        `<tr><td>${i + 1}</td><td>${fmt(puzzles)}</td><td>${fmt(min)}</td><td>${fmt(max)}</td><td>${fmt(mean)}</td></tr>`,
+    ).join('');
+    return `
+        <div class="menu-head"><button class="btn ghost step" data-action="menu-main">&lt;</button><span>HELP</span><button class="btn ghost step" data-action="menu">X</button></div>
+        <div class="help">
+          <h3>HOW TO PLAY</h3>
+          <p>The Genius Square is a 6 by 6 board. Roll the seven dice: each one names a square, like C2. Put a blocker on every square rolled.</p>
+          <p>Now fill every other square with the nine pieces. Pieces can be turned and flipped. Nothing may overlap or hang off the board.</p>
+          <p>Every roll can be solved, usually many ways. There are ${fmt(PUZZLE_COUNT)} different rolls. Play solo against the clock, or race: everyone gets the same roll, first to fill the board wins.</p>
+
+          <h3>USING THE APP</h3>
+          <p><b>Drag</b> a piece from the tray onto the board with one finger. Green means it fits, red means it doesn't. Let go off the board to put it back.</p>
+          <p><b>Tap</b> a piece to turn it a quarter turn. Only the light blue L and the red S have a mirror shape, so they have <b>Flip</b> buttons.</p>
+          <p><b>Tap a greyed-out</b> piece in the tray to pull it back off the board.</p>
+          <p><b>Menu:</b> Roll starts a new puzzle at the chosen Level (1 easiest, ${LEVEL_COUNT} hardest). Timer and Sound switch the clock and audio. Bests lists your fastest times. Puzzle # jumps to any puzzle by number.</p>
+          <p><b>Links:</b> the address bar always shows the current puzzle, like /12345. Share it and someone else gets the same roll.</p>
+          <p><b>Install:</b> in Safari tap Share, then Add to Home Screen. It works offline after that.</p>
+
+          <h3>PUZZLE STATS</h3>
+          <p>Every one of the ${fmt(PUZZLE_COUNT)} rolls was solved every possible way by computer. All together that's ${fmt(TOTAL_SOLUTIONS)} solutions. Fewer solutions means a harder puzzle, so the rolls are ranked by solution count and split into ${LEVEL_COUNT} equal levels.</p>
+          <div class="table-wrap"><table class="stats">
+            <thead><tr><th>LV</th><th>PUZZLES</th><th>FEWEST</th><th>MOST</th><th>AVERAGE</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table></div>
+          <p class="menu-note">Fewest / most / average = solutions per puzzle at that level.</p>
+        </div>`;
   }
 
   private overlayHtml(): string {
@@ -460,6 +496,7 @@ export class App {
       else if (action === 'menu') this.toggleMenu();
       else if (action === 'menu-main') { this.menuView = 'main'; this.render(); }
       else if (action === 'bests') { this.menuView = 'bests'; sound.rotate(); this.render(); }
+      else if (action === 'help') { this.menuView = 'help'; sound.rotate(); this.render(); }
       else if (action === 'play') this.roll(Number(button.dataset.seed));
       return;
     }

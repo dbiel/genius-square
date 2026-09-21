@@ -372,3 +372,19 @@ canvas.confetti { position: fixed; inset: 0; pointer-events: none; z-index: 45; 
 .best-info { flex: 1; color: var(--dim); display: flex; flex-direction: column; gap: 4px; font-size: 9px; }
 .best-info small { font-size: 7px; }
 .best-row .step { min-width: 56px; font-size: 9px; padding: 8px 6px; min-height: 36px; }
+
+/* ---------- help view ---------- */
+
+.menu.wide { width: min(560px, 94vw); }
+
+.help { display: flex; flex-direction: column; gap: 10px; font-size: 9px; line-height: 1.9; color: var(--ink); }
+.help h3 { font-size: 11px; color: var(--accent); margin: 10px 0 2px; font-weight: normal; }
+.help p { margin: 0; }
+.help b { color: var(--accent-2); font-weight: normal; }
+
+.table-wrap { overflow-x: auto; }
+
+table.stats { border-collapse: collapse; width: 100%; font-size: 8px; }
+table.stats th, table.stats td { border: 2px solid #2e2e3a; padding: 6px 6px; text-align: right; white-space: nowrap; }
+table.stats th { color: var(--dim); font-weight: normal; }
+table.stats td:first-child, table.stats th:first-child { text-align: center; color: var(--accent-2); }

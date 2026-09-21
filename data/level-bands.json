@@ -3,60 +3,80 @@
     "level": 1,
     "puzzles": 6221,
     "minSolutions": 4170,
-    "maxSolutions": 22317
+    "maxSolutions": 22317,
+    "meanSolutions": 6551,
+    "totalSolutions": 40753592
   },
   {
     "level": 2,
     "puzzles": 6221,
     "minSolutions": 2793,
-    "maxSolutions": 4170
+    "maxSolutions": 4170,
+    "meanSolutions": 3386,
+    "totalSolutions": 21062086
   },
   {
     "level": 3,
     "puzzles": 6221,
     "minSolutions": 2123,
-    "maxSolutions": 2792
+    "maxSolutions": 2792,
+    "meanSolutions": 2428,
+    "totalSolutions": 15102241
   },
   {
     "level": 4,
     "puzzles": 6221,
     "minSolutions": 1672,
-    "maxSolutions": 2123
+    "maxSolutions": 2123,
+    "meanSolutions": 1888,
+    "totalSolutions": 11744655
   },
   {
     "level": 5,
     "puzzles": 6220,
     "minSolutions": 1340,
-    "maxSolutions": 1672
+    "maxSolutions": 1672,
+    "meanSolutions": 1500,
+    "totalSolutions": 9327504
   },
   {
     "level": 6,
     "puzzles": 6221,
     "minSolutions": 1067,
-    "maxSolutions": 1340
+    "maxSolutions": 1340,
+    "meanSolutions": 1197,
+    "totalSolutions": 7447175
   },
   {
     "level": 7,
     "puzzles": 6221,
     "minSolutions": 825,
-    "maxSolutions": 1067
+    "maxSolutions": 1067,
+    "meanSolutions": 943,
+    "totalSolutions": 5868031
   },
   {
     "level": 8,
     "puzzles": 6221,
     "minSolutions": 608,
-    "maxSolutions": 824
+    "maxSolutions": 824,
+    "meanSolutions": 716,
+    "totalSolutions": 4455150
   },
   {
     "level": 9,
     "puzzles": 6221,
     "minSolutions": 393,
-    "maxSolutions": 608
+    "maxSolutions": 608,
+    "meanSolutions": 502,
+    "totalSolutions": 3123346
   },
   {
     "level": 10,
     "puzzles": 6220,
     "minSolutions": 11,
-    "maxSolutions": 393
+    "maxSolutions": 393,
+    "meanSolutions": 254,
+    "totalSolutions": 1581172
   }
 ]
