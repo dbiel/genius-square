@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: null,
       includeAssets: ['icon.svg', 'apple-touch-icon.png', 'fonts/*.woff2'],
       manifest: {
         name: 'Genius Square',
