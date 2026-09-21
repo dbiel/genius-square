@@ -8,9 +8,10 @@ import { sound } from './sound';
 
 const MARGIN = 0.9; // label gutter, in cells
 const LIFT = 0.8; // cells the dragged piece floats above the finger
+/** Pieces whose mirror image cannot be reached by rotating: only these need a Flip button. */
+const CHIRAL = new Set<PieceId>(['bigL', 's']);
 const BEST_KEY = 'gs.best';
 const TIMER_KEY = 'gs.showTimer';
-const KID_KEY = 'gs.kid';
 const MUTE_KEY = 'gs.mute';
 
 interface Drag {
@@ -40,10 +41,8 @@ function formatMs(ms: number): string {
 
 export class App {
   private game = new Game();
-  private selected: PieceId | null = null;
   private drag: Drag | null = null;
   private showTimer = readStorage(TIMER_KEY) !== '0';
-  private kidMode = readStorage(KID_KEY) === '1';
   private flashId: PieceId | null = null;
   private overlay: 'none' | 'rolling' | 'won' = 'none';
   private wonIsBest = false;
@@ -54,7 +53,6 @@ export class App {
   constructor(root: HTMLElement) {
     this.root = root;
     sound.setMuted(readStorage(MUTE_KEY) === '1');
-    document.documentElement.classList.toggle('kid', this.kidMode);
     root.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     window.addEventListener('pointermove', (e) => this.onPointerMove(e));
     window.addEventListener('pointerup', (e) => this.onPointerUp(e));
@@ -96,7 +94,7 @@ export class App {
         <div class="title">GENIUS SQUARE</div>
         <div class="status">
           <span class="puzzle">#${String(this.game.seed).padStart(5, '0')}</span>
-          <span class="clock ${this.showTimer && !this.kidMode ? '' : 'hidden'}">${formatMs(this.game.elapsedMs())}</span>
+          <span class="clock ${this.showTimer ? '' : 'hidden'}">${formatMs(this.game.elapsedMs())}</span>
         </div>
       </header>
       <section class="stage">
@@ -105,11 +103,8 @@ export class App {
       </section>
       <nav class="controls">
         <button class="btn primary" data-action="roll">Roll</button>
-        <button class="btn" data-action="flip">Flip</button>
-        <button class="btn" data-action="hint">${this.kidMode ? 'Help' : 'Hint'}</button>
-        <button class="btn ghost ${this.showTimer && !this.kidMode ? '' : 'off'}" data-action="timer" title="Show or hide the clock">Timer</button>
+        <button class="btn ghost ${this.showTimer ? '' : 'off'}" data-action="timer" title="Show or hide the clock">Timer</button>
         <button class="btn ghost ${sound.isMuted() ? 'off' : ''}" data-action="mute" title="Sound on or off">Sound</button>
-        <button class="btn ghost ${this.kidMode ? 'on' : ''}" data-action="kid" title="Bigger pieces, no clock">Kid</button>
       </nav>
       ${this.overlayHtml()}
     `;
@@ -146,8 +141,10 @@ export class App {
       .pieces()
       .map((p) => {
         const { w, h } = pieceBounds(p.cells);
-        const cls = ['piece', p.placed ? 'placed' : '', this.selected === p.id ? 'selected' : ''].join(' ');
-        return `<svg class="${cls}" data-piece="${p.id}" style="--w:${w};--h:${h}" viewBox="0 0 ${w * UNIT} ${h * UNIT}">${pieceSvg(p.cells, PIECE_COLORS[p.id])}</svg>`;
+        const cls = ['piece', p.placed ? 'placed' : ''].join(' ');
+        const svg = `<svg class="${cls}" data-piece="${p.id}" style="--w:${w};--h:${h}" viewBox="0 0 ${w * UNIT} ${h * UNIT}">${pieceSvg(p.cells, PIECE_COLORS[p.id])}</svg>`;
+        const flip = CHIRAL.has(p.id) ? `<button class="flip" data-action="flip" data-flip="${p.id}">Flip</button>` : '';
+        return `<div class="slot">${svg}${flip}</div>`;
       })
       .join('');
   }
@@ -180,7 +177,6 @@ export class App {
   // ---------- actions ----------
 
   private roll(): void {
-    this.selected = null;
     this.flashId = null;
     this.overlay = 'rolling';
     sound.unlock();
@@ -209,7 +205,6 @@ export class App {
     if (!h) return;
     sound.drop();
     this.flashId = h.id;
-    this.selected = null;
     this.render();
     setTimeout(() => {
       this.flashId = null;
@@ -217,11 +212,13 @@ export class App {
     }, 1600);
   }
 
-  private flip(): void {
-    if (!this.selected) return;
+  private flip(id: PieceId): void {
+    sound.unlock();
     sound.rotate();
-    this.game.flip(this.selected);
-    this.render();
+    const was = this.game.board.placements.get(id)?.at;
+    this.game.flip(id);
+    if (was) this.game.drop(id, was);
+    this.afterMove();
   }
 
   private toggleMute(): void {
@@ -231,13 +228,6 @@ export class App {
     this.render();
   }
 
-  private toggleKid(): void {
-    this.kidMode = !this.kidMode;
-    writeStorage(KID_KEY, this.kidMode ? '1' : '0');
-    document.documentElement.classList.toggle('kid', this.kidMode);
-    this.fit();
-    this.render();
-  }
 
   private toggleTimer(): void {
     this.showTimer = !this.showTimer;
@@ -271,10 +261,9 @@ export class App {
       const action = button.dataset.action;
       if (action === 'roll') this.roll();
       else if (action === 'hint') this.hint();
-      else if (action === 'flip') this.flip();
+      else if (action === 'flip') this.flip(button.dataset.flip as PieceId);
       else if (action === 'timer') this.toggleTimer();
       else if (action === 'mute') this.toggleMute();
-      else if (action === 'kid') this.toggleKid();
       return;
     }
     if (this.overlay !== 'none' || this.drag) return;
@@ -302,7 +291,6 @@ export class App {
       ghost,
       moved: false,
     };
-    this.selected = id;
     sound.unlock();
     sound.pickUp();
     this.positionGhost(e);

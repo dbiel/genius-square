@@ -19,7 +19,6 @@
   --tray-scale: 0.62;
 }
 
-:root.kid { --tray-scale: 0.8; }
 
 * { box-sizing: border-box; }
 
@@ -115,9 +114,6 @@ svg.board {
   max-width: calc(var(--cell) * 7.2);
 }
 
-:root.kid .tray { max-width: calc(var(--cell) * 8.5); }
-:root.kid button.btn { min-height: 56px; }
-
 .tray .piece {
   width: calc(var(--cell) * var(--tray-scale) * var(--w));
   height: calc(var(--cell) * var(--tray-scale) * var(--h));
@@ -127,8 +123,25 @@ svg.board {
   transition: transform 0.12s;
 }
 
+.tray .slot { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+
 .tray .piece.placed { opacity: 0.18; pointer-events: none; }
-.tray .piece.selected { filter: drop-shadow(0 0 6px var(--accent)) drop-shadow(0 0 2px var(--accent)); }
+
+button.flip {
+  font-family: var(--font);
+  font-size: 8px;
+  color: var(--accent-2);
+  background: var(--panel);
+  border: 3px solid var(--accent-2);
+  box-shadow: 3px 3px 0 #000;
+  padding: 8px 10px;
+  min-height: 34px;
+  cursor: pointer;
+  text-transform: uppercase;
+  touch-action: manipulation;
+}
+
+button.flip:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #000; }
 .tray .piece.bounce { animation: bounce 0.35s; }
 
 @keyframes bounce {
@@ -163,7 +176,6 @@ button.btn:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 #000; 
 button.btn.primary { background: var(--accent); color: #1a1500; border-color: #1a1500; }
 button.btn.ghost { border-color: var(--dim); color: var(--dim); font-size: 10px; min-width: 48px; padding: 12px; }
 button.btn.ghost.off { text-decoration: line-through; opacity: 0.55; }
-button.btn.ghost.on { border-color: var(--accent-2); color: var(--accent-2); }
 
 .drag-ghost {
   position: fixed;
