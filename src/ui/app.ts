@@ -61,13 +61,37 @@ function seedFromLocation(): number | undefined {
   return n < PUZZLE_COUNT ? n : undefined;
 }
 
-function readPuzzleBests(): Record<string, number> {
+interface Best {
+  ms: number;
+  /** Epoch ms when set (0 for records saved before dates were kept). */
+  at: number;
+}
+
+function readPuzzleBests(): Record<string, Best> {
   try {
     const parsed: unknown = JSON.parse(readStorage(PUZZLE_BESTS_KEY) ?? '{}');
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, number>) : {};
+    if (!parsed || typeof parsed !== 'object') return {};
+    const out: Record<string, Best> = {};
+    for (const [seed, v] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof v === 'number') out[seed] = { ms: v, at: 0 };
+      else if (v && typeof v === 'object' && typeof (v as Best).ms === 'number') out[seed] = v as Best;
+    }
+    return out;
   } catch {
     return {};
   }
+}
+
+/** Fastest solve across all puzzles, or null. */
+function overallBest(bests: Record<string, Best>): { seed: number; ms: number } | null {
+  let top: { seed: number; ms: number } | null = null;
+  for (const [seed, b] of Object.entries(bests)) if (!top || b.ms < top.ms) top = { seed: Number(seed), ms: b.ms };
+  return top;
+}
+
+function formatDate(at: number): string {
+  if (!at) return '';
+  return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function clampLevel(n: number): number {
@@ -85,6 +109,7 @@ export class App {
   private showTimer = readStorage(TIMER_KEY) !== '0';
   private level = clampLevel(Number(readStorage(LEVEL_KEY)) || DEFAULT_LEVEL);
   private menuOpen = false;
+  private menuView: 'main' | 'bests' = 'main';
   private playerName = (readStorage(NAME_KEY) ?? '').trim() || DEFAULT_NAME;
   private flashId: PieceId | null = null;
   private overlay: 'none' | 'rolling' | 'won' = 'none';
@@ -118,7 +143,7 @@ export class App {
     const h = window.innerHeight - 24;
     const cell = landscape
       ? Math.min((h - 80) / (SIZE + MARGIN), (w * 0.55) / (SIZE + MARGIN))
-      : Math.min(w / (SIZE + MARGIN), (h - 170) / (SIZE + MARGIN + TRAY_CELLS * 0.62 + 0.8));
+      : Math.min(w / (SIZE + MARGIN), (h - 110) / (SIZE + MARGIN + TRAY_CELLS * 0.62 + 0.8));
     document.documentElement.style.setProperty('--cell', `${Math.max(34, Math.floor(cell))}px`);
   }
 
@@ -149,14 +174,6 @@ export class App {
         <div class="board-wrap">${this.boardSvg()}</div>
         <div class="tray">${this.trayHtml()}</div>
       </section>
-      <nav class="controls">
-        <button class="btn primary" data-action="roll">Roll</button>
-        <div class="level" title="Difficulty for the next roll">
-          <button class="btn ghost step" data-action="level-down" ${this.level <= 1 ? 'disabled' : ''}>-</button>
-          <span class="level-value">LV ${this.level}</span>
-          <button class="btn ghost step" data-action="level-up" ${this.level >= LEVEL_COUNT ? 'disabled' : ''}>+</button>
-        </div>
-      </nav>
       ${this.menuHtml()}
       ${this.overlayHtml()}
     `;
@@ -206,14 +223,24 @@ export class App {
 
   private menuHtml(): string {
     if (!this.menuOpen) return '';
-    return `<div class="menu-backdrop" data-action="menu"></div>
-      <aside class="menu">
+    const body = this.menuView === 'bests' ? this.bestsHtml() : this.mainMenuHtml();
+    return `<div class="menu-backdrop" data-action="menu"></div><aside class="menu">${body}</aside>`;
+  }
+
+  private mainMenuHtml(): string {
+    return `
         <div class="menu-head"><span>MENU</span><button class="btn ghost step" data-action="menu">X</button></div>
         <button class="btn primary wide" data-action="roll">Roll</button>
+        <div class="level" title="Difficulty for the next roll">
+          <button class="btn ghost step" data-action="level-down" ${this.level <= 1 ? 'disabled' : ''}>-</button>
+          <span class="level-value">LEVEL ${this.level}</span>
+          <button class="btn ghost step" data-action="level-up" ${this.level >= LEVEL_COUNT ? 'disabled' : ''}>+</button>
+        </div>
         <div class="menu-row">
           <button class="btn ghost ${this.showTimer ? '' : 'off'}" data-action="timer">Timer</button>
           <button class="btn ghost ${sound.isMuted() ? 'off' : ''}" data-action="mute">Sound</button>
         </div>
+        <button class="btn ghost wide" data-action="bests">Bests</button>
         <label class="menu-field">
           <span>PLAYER</span>
           <input class="name" name="playerName" type="text" maxlength="16" autocomplete="off" autocapitalize="words" value="${escapeHtml(this.playerName)}" />
@@ -226,8 +253,34 @@ export class App {
           </div>
         </form>
         <button class="btn ghost wide" disabled>Multiplayer <small>soon</small></button>
-        <button class="btn ghost wide" disabled>Times <small>soon</small></button>
-      </aside>`;
+        <button class="btn ghost wide" disabled>Times <small>soon</small></button>`;
+  }
+
+  private bestsHtml(): string {
+    const bests = readPuzzleBests();
+    const top = overallBest(bests);
+    const rows = Object.entries(bests)
+      .map(([seed, b]) => ({ seed: Number(seed), ...b }))
+      .sort((a, b) => a.ms - b.ms || a.seed - b.seed);
+    const list = rows.length
+      ? rows
+          .map(
+            (r) => `<div class="best-row ${top && r.seed === top.seed ? 'top' : ''}">
+              <span class="best-time">${formatMs(r.ms)}</span>
+              <span class="best-info">#${String(r.seed).padStart(5, '0')} LV${levelOf(r.seed)}<small>${formatDate(r.at)}</small></span>
+              <button class="btn ghost step" data-action="play" data-seed="${r.seed}">Play</button>
+            </div>`,
+          )
+          .join('')
+      : '<p class="menu-note">No solves yet. Go fill a square!</p>';
+    return `
+        <div class="menu-head"><button class="btn ghost step" data-action="menu-main">&lt;</button><span>BESTS</span><button class="btn ghost step" data-action="menu">X</button></div>
+        <div class="pb-box">
+          <span>PERSONAL BEST</span>
+          ${top ? `<strong>${formatMs(top.ms)}</strong><small>puzzle #${String(top.seed).padStart(5, '0')}</small>` : '<strong>--:--</strong>'}
+        </div>
+        <div class="menu-sub">${rows.length} PUZZLE${rows.length === 1 ? '' : 'S'} SOLVED, FASTEST FIRST</div>
+        <div class="best-list">${list}</div>`;
   }
 
   private overlayHtml(): string {
@@ -308,6 +361,7 @@ export class App {
 
   private toggleMenu(): void {
     this.menuOpen = !this.menuOpen;
+    this.menuView = 'main';
     sound.unlock();
     if (this.menuOpen) sound.menu();
     this.render();
@@ -363,20 +417,20 @@ export class App {
       const ms = this.game.elapsedMs();
       const seed = String(this.game.seed);
       const puzzleBests = readPuzzleBests();
-      const prevPuzzle = puzzleBests[seed];
+      const prevPuzzle = puzzleBests[seed]?.ms;
+      const prevOverall = overallBest(puzzleBests)?.ms ?? null;
       const puzzleNew = prevPuzzle === undefined || ms < prevPuzzle;
+      const overallNew = prevOverall === null || ms < prevOverall;
       if (puzzleNew) {
-        puzzleBests[seed] = ms;
+        puzzleBests[seed] = { ms, at: Date.now() };
         writeStorage(PUZZLE_BESTS_KEY, JSON.stringify(puzzleBests));
       }
-      const prevOverall = readStorage(BEST_KEY);
-      const overallNew = prevOverall === null || ms < Number(prevOverall);
       if (overallNew) writeStorage(BEST_KEY, String(ms));
       this.won = {
         ms,
         puzzleBest: puzzleNew ? ms : prevPuzzle!,
         puzzleNew,
-        overallBest: overallNew ? ms : Number(prevOverall),
+        overallBest: overallNew ? ms : prevOverall!,
         overallNew,
       };
       this.overlay = 'won';
@@ -404,6 +458,9 @@ export class App {
       else if (action === 'level-down') this.setLevel(this.level - 1);
       else if (action === 'level-up') this.setLevel(this.level + 1);
       else if (action === 'menu') this.toggleMenu();
+      else if (action === 'menu-main') { this.menuView = 'main'; this.render(); }
+      else if (action === 'bests') { this.menuView = 'bests'; sound.rotate(); this.render(); }
+      else if (action === 'play') this.roll(Number(button.dataset.seed));
       return;
     }
     if (this.overlay !== 'none' || this.drag) return;
