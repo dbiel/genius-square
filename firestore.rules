@@ -6,7 +6,8 @@ service cloud.firestore {
 
     function isName(s) { return s is string && s.size() >= 1 && s.size() <= 16; }
     function isSeed(n) { return n is int && n >= 0 && n < 62208; }
-    function isMs(n) { return n is int && n >= 0 && n < 86400000; }
+    // A real solve takes at least a few seconds; anything faster is a test or a bug.
+    function isMs(n) { return n is int && n >= 5000 && n < 86400000; }
 
     match /rooms/{code} {
       allow read: if true;

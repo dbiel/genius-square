@@ -164,6 +164,8 @@ export class App {
   private challenge: { name: string; ms: number } | null = null;
   private shareNote = '';
   private booted = false;
+  /** Set when the hidden hint helped on this puzzle; such solves stay off the shared Times board. */
+  private hintUsed = false;
   private roomBusy = false;
   private roomError = '';
   private toBeat: TimeEntry | null = null;
@@ -490,7 +492,7 @@ export class App {
         </p>
         ${this.challenge ? `<p class="pb ${w.ms < this.challenge.ms ? '' : 'stands'}">${w.ms < this.challenge.ms ? `YOU BEAT ${escapeHtml(this.challenge.name).toUpperCase()}'S ${formatMs(this.challenge.ms)}!` : `${escapeHtml(this.challenge.name).toUpperCase()}'S ${formatMs(this.challenge.ms)} STANDS`}</p>` : ''}
         ${w.overallNew ? '<p class="pb">PERSONAL BEST!</p>' : ''}
-        <button class="btn ghost wide" data-action="share" data-seed="${this.game.seed}" data-ms="${w.ms}" data-name="${escapeHtml(this.playerName)}">Challenge a friend</button>
+        ${this.hintUsed ? '<p class="menu-sub">HINT USED, NOT ON THE TIMES BOARD</p>' : `<button class="btn ghost wide" data-action="share" data-seed="${this.game.seed}" data-ms="${w.ms}" data-name="${escapeHtml(this.playerName)}">Challenge a friend</button>`}
         ${this.shareNote ? `<p class="menu-sub">${escapeHtml(this.shareNote)}</p>` : ''}
         ${this.roomState ? this.roomState.players.filter((x) => x.id !== this.playerId).map((x) => `<button class="btn ghost wide" data-action="watch" data-player="${x.id}">${x.solvedMs !== null ? `${escapeHtml(x.name)} ${formatMs(x.solvedMs)}` : `Watch ${escapeHtml(x.name)} (${x.placed}/29)`}</button>`).join('') : ''}
         <button class="btn primary" data-action="roll">New puzzle</button>
@@ -530,6 +532,7 @@ export class App {
     if (this.booted) this.challenge = null;
     this.booted = true;
     this.shareNote = '';
+    this.hintUsed = false;
     this.flashId = null;
     this.menuOpen = false;
     this.watching = null;
@@ -562,6 +565,7 @@ export class App {
   private hint(): void {
     const h: GameHint | null = this.game.hint();
     if (!h) return;
+    this.hintUsed = true;
     sound.drop();
     this.flashId = h.id;
     this.render();
@@ -762,7 +766,7 @@ export class App {
     if (this.game.isSolved()) {
       const ms = this.game.elapsedMs();
       void this.room?.setSolved(ms, wirePlacements(this.game));
-      recordTime({ name: this.playerName, ms, seed: this.game.seed, at: 0 }).catch(() => undefined);
+      if (!this.hintUsed) recordTime({ name: this.playerName, ms, seed: this.game.seed, at: 0 }).catch(() => undefined);
       const seed = String(this.game.seed);
       const puzzleBests = readPuzzleBests();
       const prevPuzzle = puzzleBests[seed]?.ms;
