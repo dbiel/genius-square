@@ -6,6 +6,7 @@ import { BLOCKER_COLOR, BOARD_COLOR, PIECE_COLORS } from './colors';
 import { UNIT, pegSvg, pieceBounds, pieceSvg } from './tiles';
 import { sound } from './sound';
 import { LEVEL_COUNT, levelOf, randomSeedForLevel } from '../core/levels';
+import { PUZZLE_COUNT } from '../core/dice';
 
 const MARGIN = 0.9; // label gutter, in cells
 const LIFT = 0.8; // cells the dragged piece floats above the finger
@@ -51,6 +52,14 @@ function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
+/** Puzzle number from the URL, gs.davidbiel.com/12345 (or a legacy #12345), or undefined. */
+function seedFromLocation(): number | undefined {
+  const raw = location.pathname.replace(/^\/+|\/+$/g, '') || location.hash.slice(1);
+  if (!/^\d{1,5}$/.test(raw)) return undefined;
+  const n = Number(raw);
+  return n < PUZZLE_COUNT ? n : undefined;
+}
+
 function clampLevel(n: number): number {
   return Math.min(LEVEL_COUNT, Math.max(1, Math.round(n)));
 }
@@ -79,13 +88,14 @@ export class App {
     sound.setMuted(readStorage(MUTE_KEY) === '1');
     root.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     root.addEventListener('change', (e) => this.onChange(e));
+    root.addEventListener('submit', (e) => this.onSubmit(e));
     window.addEventListener('pointermove', (e) => this.onPointerMove(e));
     window.addEventListener('pointerup', (e) => this.onPointerUp(e));
     window.addEventListener('pointercancel', (e) => this.onPointerUp(e));
     window.addEventListener('resize', () => this.fit());
     setInterval(() => this.tickClock(), 250);
     this.fit();
-    this.roll();
+    this.roll(seedFromLocation());
   }
 
   // ---------- layout ----------
@@ -196,6 +206,13 @@ export class App {
           <span>PLAYER</span>
           <input class="name" name="playerName" type="text" maxlength="16" autocomplete="off" autocapitalize="words" value="${escapeHtml(this.playerName)}" />
         </label>
+        <form class="menu-field" data-form="puzzle">
+          <span>PUZZLE # (0 to ${PUZZLE_COUNT - 1})</span>
+          <div class="menu-row">
+            <input class="name" name="puzzle" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="5" placeholder="${this.game.seed}" autocomplete="off" />
+            <button class="btn ghost" type="submit">Go</button>
+          </div>
+        </form>
         <button class="btn ghost wide" disabled>Multiplayer <small>soon</small></button>
         <button class="btn ghost wide" disabled>Times <small>soon</small></button>
       </aside>`;
@@ -228,13 +245,13 @@ export class App {
 
   // ---------- actions ----------
 
-  private roll(): void {
+  private roll(seed?: number): void {
     this.flashId = null;
     this.menuOpen = false;
     this.overlay = 'rolling';
     sound.unlock();
     sound.roll();
-    const target = new Game(randomSeedForLevel(this.level));
+    const target = new Game(seed ?? randomSeedForLevel(this.level));
     let ticks = 0;
     const spin = setInterval(() => {
       this.diceFaces = DICE.map((die) => die[Math.floor(Math.random() * die.length)]);
@@ -247,6 +264,7 @@ export class App {
         setTimeout(() => {
           this.game = target;
           this.overlay = 'none';
+          history.replaceState(null, '', `/${target.seed}`);
           this.render();
         }, 700);
       }
@@ -278,6 +296,20 @@ export class App {
     this.menuOpen = !this.menuOpen;
     sound.unlock();
     this.render();
+  }
+
+  private onSubmit(e: Event): void {
+    e.preventDefault();
+    const form = e.target as HTMLFormElement;
+    if (form.dataset.form !== 'puzzle') return;
+    const input = form.elements.namedItem('puzzle') as HTMLInputElement;
+    const n = Number(input.value.trim());
+    if (!Number.isInteger(n) || n < 0 || n >= PUZZLE_COUNT) {
+      sound.error();
+      input.classList.add('bad');
+      return;
+    }
+    this.roll(n);
   }
 
   private onChange(e: Event): void {

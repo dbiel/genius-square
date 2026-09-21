@@ -24,6 +24,9 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // /12345 is a puzzle link; serve the app shell for it offline too.
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/(assets|fonts)\//, /\.(js|css|json|png|svg|woff2|webmanifest)$/],
       },
     }),
   ],
