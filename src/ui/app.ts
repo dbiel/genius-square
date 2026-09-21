@@ -1,13 +1,13 @@
 import { Game, type GameHint } from '../core/game';
 import { DICE, squareName } from '../core/dice';
 import { SIZE } from '../core/board';
-import { PIECES, type Cell, type PieceId } from '../core/pieces';
+import { PIECES, cellKey, type Cell, type PieceId } from '../core/pieces';
 import { BLOCKER_COLOR, BOARD_COLOR, PIECE_COLORS } from './colors';
 import { UNIT, pegSvg, pieceBounds, pieceSvg } from './tiles';
 import { sound } from './sound';
 import { LEVEL_COUNT, levelOf, randomSeedForLevel } from '../core/levels';
 import { LEVEL_BANDS, TOTAL_SOLUTIONS } from '../core/levels-data';
-import { RoomClient, bestTimeFor, recentTimes, recordTime, topTimes, type RoomState, type TimeEntry } from '../mp/client';
+import { RoomClient, bestTimeFor, recentTimes, recordTime, topTimes, type RoomState, type TimeEntry, type WirePlacements } from '../mp/client';
 import { isRoomCode } from '../mp/rules';
 import { PUZZLE_COUNT } from '../core/dice';
 
@@ -35,6 +35,7 @@ const PLAYER_ID_KEY = 'gs.playerId';
 
 // Chunky pixel icons, drawn on an 8x8 grid so they match the font.
 const ICON_CLOCK = `<svg viewBox="0 0 8 8" shape-rendering="crispEdges"><path fill="currentColor" d="M2 0h4v1H2zM1 1h1v1H1zM6 1h1v1H6zM0 2h1v4H0zM7 2h1v4H7zM1 6h1v1H1zM6 6h1v1H6zM2 7h4v1H2zM3 2h1v3H3zM4 4h2v1H4z"/></svg>`;
+const ICON_DICE = `<svg viewBox="0 0 8 8" shape-rendering="crispEdges"><path fill="currentColor" d="M1 0h6v1H1zM0 1h8v6H0zM1 7h6v1H1z"/><path fill="#0b0b14" d="M2 2h1v1H2zM5 2h1v1H5zM3.5 3.5h1v1h-1zM2 5h1v1H2zM5 5h1v1H5z"/></svg>`;
 const ICON_SOUND = `<svg viewBox="0 0 8 8" shape-rendering="crispEdges"><path fill="currentColor" d="M0 3h1v2H0zM1 2h1v4H1zM2 1h1v6H2zM3 0h1v8H3zM5 2h1v1H5zM6 1h1v1H6zM5 5h1v1H5zM6 6h1v1H6zM7 2h1v4H7z"/></svg>`;
 
 interface Drag {
@@ -102,6 +103,17 @@ function formatDate(at: number): string {
   return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+/** Board placements as [orientation index, row, col] per piece, for the room. */
+function wirePlacements(game: Game): WirePlacements {
+  const out: WirePlacements = {};
+  for (const [id, p] of game.board.placements) {
+    const piece = PIECES.find((x) => x.id === id)!;
+    const o = piece.orientations.findIndex((cells) => cellKey(cells) === cellKey(p.cells));
+    out[id] = [Math.max(0, o), p.at.r, p.at.c];
+  }
+  return out;
+}
+
 function playerIdentity(): string {
   const existing = readStorage(PLAYER_ID_KEY);
   if (existing) return existing;
@@ -133,6 +145,8 @@ export class App {
   private roomState: RoomState | null = null;
   /** Players whose finish we've already reacted to, per seed. */
   private announced = new Set<string>();
+  /** Player being watched live, if any. */
+  private watching: string | null = null;
   private roomBusy = false;
   private roomError = '';
   private toBeat: TimeEntry | null = null;
@@ -212,13 +226,20 @@ export class App {
       </section>
       ${this.menuHtml()}
       ${this.overlayHtml()}
+      ${this.watchHtml()}
     `;
   }
 
   private boardSvg(): string {
+    const placed = this.game.pieces().filter((p) => p.placed && p.at).map((p) => ({ id: p.id, cells: p.cells, at: p.at! }));
+    return this.boardSvgFor(this.game.blockers, placed, true);
+  }
+
+  /** A board drawing. Interactive boards get drag handles and hint flashes; watched boards are static. */
+  private boardSvgFor(blockers: Cell[], placed: { id: PieceId; cells: Cell[]; at: Cell }[], interactive: boolean): string {
     const total = (SIZE + MARGIN) * UNIT;
     const off = MARGIN * UNIT;
-    let out = `<svg class="board" viewBox="0 0 ${total} ${total}">`;
+    let out = `<svg class="board ${interactive ? '' : 'watched'}" viewBox="0 0 ${total} ${total}">`;
     out += `<rect x="${off - 14}" y="${off - 14}" width="${SIZE * UNIT + 28}" height="${SIZE * UNIT + 28}" rx="10" fill="${BOARD_COLOR}"/>`;
     for (let i = 0; i < SIZE; i++) {
       out += `<text class="label" x="${off + i * UNIT + UNIT / 2}" y="${off - 30}" text-anchor="middle">${i + 1}</text>`;
@@ -229,16 +250,32 @@ export class App {
         out += `<rect class="grid-cell" data-r="${r}" data-c="${c}" x="${off + c * UNIT + 4}" y="${off + r * UNIT + 4}" width="${UNIT - 8}" height="${UNIT - 8}"/>`;
       }
     }
-    for (const b of this.game.blockers) out += pegSvg(off + b.c * UNIT, off + b.r * UNIT, BLOCKER_COLOR);
-    for (const p of this.game.pieces()) {
-      if (!p.placed || !p.at) continue;
-      const lifted = this.drag?.id === p.id ? 'lifted' : '';
-      const flash = this.flashId === p.id ? 'flash' : '';
-      out += `<g class="placed ${lifted} ${flash}" data-piece="${p.id}" transform="translate(${off + p.at.c * UNIT} ${off + p.at.r * UNIT})">`;
+    for (const b of blockers) out += pegSvg(off + b.c * UNIT, off + b.r * UNIT, BLOCKER_COLOR);
+    for (const p of placed) {
+      const lifted = interactive && this.drag?.id === p.id ? 'lifted' : '';
+      const flash = interactive && this.flashId === p.id ? 'flash' : '';
+      out += `<g class="placed ${lifted} ${flash}" ${interactive ? `data-piece="${p.id}"` : ''} transform="translate(${off + p.at.c * UNIT} ${off + p.at.r * UNIT})">`;
       out += pieceSvg(p.cells, PIECE_COLORS[p.id]).replaceAll('<g ', '<g class="cube" ');
       out += `</g>`;
     }
     return out + `</svg>`;
+  }
+
+  /** Live view of another player's board, drawn from their synced placements. */
+  private watchHtml(): string {
+    if (!this.watching || !this.roomState) return '';
+    const p = this.roomState.players.find((x) => x.id === this.watching);
+    if (!p) return '';
+    const placed = Object.entries(p.placements).flatMap(([id, [o, r, c]]) => {
+      const piece = PIECES.find((x) => x.id === id);
+      return piece && piece.orientations[o] ? [{ id: piece.id, cells: piece.orientations[o], at: { r, c } }] : [];
+    });
+    const status = p.solvedMs !== null ? `SOLVED IN ${formatMs(p.solvedMs)}` : `${p.placed}/29 PLACED${p.online ? '' : ' (AWAY)'}`;
+    return `<div class="overlay watch"><div class="card watch-card">
+      <div class="menu-head"><span>WATCHING ${escapeHtml(p.name).toUpperCase()}</span><button class="btn ghost step" data-action="unwatch">X</button></div>
+      <div class="watch-board">${this.boardSvgFor(this.game.blockers, placed, false)}</div>
+      <p class="menu-sub">${status}</p>
+    </div></div>`;
   }
 
   private trayHtml(): string {
@@ -270,11 +307,12 @@ export class App {
   private mainMenuHtml(): string {
     return `
         <div class="menu-head"><span>MENU</span><button class="btn ghost step" data-action="menu">X</button></div>
-        <button class="btn primary wide" data-action="roll">Roll</button>
-        <div class="level" title="Difficulty for the next roll">
+        <button class="btn primary wide" data-action="roll">New</button>
+        <div class="level" title="Difficulty for the next puzzle">
           <button class="btn ghost step" data-action="level-down" ${this.level <= 1 ? 'disabled' : ''}>-</button>
           <span class="level-value">LEVEL ${this.level}</span>
           <button class="btn ghost step" data-action="level-up" ${this.level >= LEVEL_COUNT ? 'disabled' : ''}>+</button>
+          <button class="btn ghost step dice" data-action="random" aria-label="Random" title="Any level, any puzzle">${ICON_DICE}</button>
         </div>
         <button class="btn ghost wide" data-action="times">Times</button>
         <label class="menu-field">
@@ -304,7 +342,7 @@ export class App {
         <div class="pb-box"><span>ROOM CODE</span><strong>${this.room.code}</strong><small>friends join from the menu with this code</small></div>
         <div class="menu-sub">${this.roomState.players.length} PLAYER${this.roomState.players.length === 1 ? '' : 'S'}, SAME PUZZLE</div>
         <div class="best-list">${players}</div>
-        <p class="menu-note">Roll asks everyone to roll. The new puzzle starts when all players have pressed Roll.</p>
+        <p class="menu-note">New asks everyone for a new puzzle. It starts when all players have pressed New.</p>
         <button class="btn ghost wide" data-action="leave">Leave room</button>`;
     }
     return `${head}
@@ -369,15 +407,17 @@ export class App {
     const iAgreed = ready[this.playerId] === true;
     const proposer = p ? st.players.find((x) => x.id === p.by)?.name ?? 'Someone' : '';
     const waiting = p ? st.players.filter((x) => x.online && !ready[x.id]).map((x) => x.name) : [];
+    const canWatch = this.game.isSolved();
     const players = st.players
       .map((x) => `<div class="rp ${x.online ? '' : 'offline'} ${x.solvedMs !== null ? 'done' : ''}">
           <span class="rp-name">${escapeHtml(x.name)}</span>
           <span class="rp-bar"><span style="width:${Math.round((x.placed / 29) * 100)}%"></span></span>
           <span class="rp-time">${x.solvedMs !== null ? formatMs(x.solvedMs) : `${x.placed}/29`}</span>
+          ${canWatch && x.id !== this.playerId ? `<button class="btn ghost step tiny" data-action="watch" data-player="${x.id}">Watch</button>` : ''}
         </div>`)
       .join('');
     const banner = p
-      ? `<div class="rp-banner">${iAgreed ? `WAITING FOR ${waiting.map(escapeHtml).join(', ') || '…'}` : `${escapeHtml(proposer)} WANTS TO ROLL`}${iAgreed ? '' : ' <button class="btn primary step" data-action="roll">Roll</button>'}</div>`
+      ? `<div class="rp-banner">${iAgreed ? `WAITING FOR ${waiting.map(escapeHtml).join(', ') || '…'}` : `${escapeHtml(proposer)} WANTS A NEW PUZZLE`}${iAgreed ? '' : ' <button class="btn primary step" data-action="roll">New</button>'}</div>`
       : '';
     return `<section class="room"><div class="rp-head">ROOM ${this.room.code}</div>${players}${banner}</section>`;
   }
@@ -400,7 +440,7 @@ export class App {
           <p><b>Drag</b> a piece from the tray onto the board with one finger. Green means it fits, red means it doesn't. Let go off the board to put it back.</p>
           <p><b>Tap</b> a piece to turn it a quarter turn. Only the light blue L and the red S have a mirror shape, so they have <b>Flip</b> buttons.</p>
           <p><b>Tap a greyed-out</b> piece in the tray to pull it back off the board.</p>
-          <p><b>Menu:</b> Roll starts a new puzzle at the chosen Level (1 easiest, ${LEVEL_COUNT} hardest). Timer and Sound switch the clock and audio. Times lists your fastest solves on this device and everyone's fastest overall. Puzzle # jumps to any puzzle by number.</p>
+          <p><b>Menu:</b> New starts a new puzzle at the chosen Level (1 easiest, ${LEVEL_COUNT} hardest); the dice picks any level and any puzzle. Timer and Sound switch the clock and audio. Times lists your fastest solves on this device and everyone's fastest overall. Puzzle # jumps to any puzzle by number.</p>
           <p><b>Links:</b> the address bar always shows the current puzzle, like /12345. Share it and someone else gets the same roll.</p>
           <p><b>Install:</b> in Safari tap Share, then Add to Home Screen. It works offline after that.</p>
 
@@ -430,7 +470,8 @@ export class App {
           PERSONAL BEST: ${formatMs(w.overallBest)}${this.toBeat && this.toBeat.ms < w.ms ? `<br>TO BEAT: ${formatMs(this.toBeat.ms)} BY ${escapeHtml(this.toBeat.name).toUpperCase()}` : ''}
         </p>
         ${w.overallNew ? '<p class="pb">PERSONAL BEST!</p>' : ''}
-        <button class="btn primary" data-action="roll">Roll again</button>
+        ${this.roomState ? this.roomState.players.filter((x) => x.id !== this.playerId).map((x) => `<button class="btn ghost wide" data-action="watch" data-player="${x.id}">${x.solvedMs !== null ? `${escapeHtml(x.name)} ${formatMs(x.solvedMs)}` : `Watch ${escapeHtml(x.name)} (${x.placed}/29)`}</button>`).join('') : ''}
+        <button class="btn primary" data-action="roll">New puzzle</button>
       </div></div><canvas class="confetti"></canvas>`;
     }
     return '';
@@ -465,6 +506,7 @@ export class App {
     this.onRollStart?.();
     this.flashId = null;
     this.menuOpen = false;
+    this.watching = null;
     this.overlay = 'rolling';
     sound.unlock();
     sound.roll();
@@ -572,6 +614,7 @@ export class App {
     const room = this.room;
     this.room = null;
     this.roomState = null;
+    this.watching = null;
     this.render();
     await room?.leave();
   }
@@ -667,10 +710,10 @@ export class App {
 
   private afterMove(): void {
     if (this.overlay === 'won') return;
-    void this.room?.setPlaced(29 - this.game.board.emptyCount());
+    void this.room?.setPlaced(29 - this.game.board.emptyCount(), wirePlacements(this.game));
     if (this.game.isSolved()) {
       const ms = this.game.elapsedMs();
-      void this.room?.setSolved(ms);
+      void this.room?.setSolved(ms, wirePlacements(this.game));
       recordTime({ name: this.playerName, ms, seed: this.game.seed, at: 0 }).catch(() => undefined);
       const seed = String(this.game.seed);
       const puzzleBests = readPuzzleBests();
@@ -708,6 +751,7 @@ export class App {
       e.preventDefault();
       const action = button.dataset.action;
       if (action === 'roll') this.roll();
+      else if (action === 'random') this.roll(Math.floor(Math.random() * PUZZLE_COUNT));
       else if (action === 'hint') this.hint();
       else if (action === 'flip') this.flip(button.dataset.flip as PieceId);
       else if (action === 'timer') this.toggleTimer();
@@ -724,6 +768,8 @@ export class App {
       else if (action === 'create-room') void this.createRoom();
       else if (action === 'sort-fastest' || action === 'sort-recent') { this.bestsSort = action === 'sort-recent' ? 'recent' : 'fastest'; sound.rotate(); this.render(); if (this.timesScope === 'everyone') void this.loadTimes(); }
       else if (action === 'leave') void this.leaveRoom();
+      else if (action === 'watch') { this.watching = button.dataset.player ?? null; sound.rotate(); this.render(); }
+      else if (action === 'unwatch') { this.watching = null; this.render(); }
       else if (action === 'play') this.roll(Number(button.dataset.seed));
       return;
     }

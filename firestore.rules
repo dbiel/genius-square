@@ -21,7 +21,7 @@ service cloud.firestore {
         allow read: if true;
         allow write: if request.resource == null
           || (isName(request.resource.data.name)
-            && request.resource.data.keys().hasOnly(['name', 'joinedAt', 'lastSeen', 'placed', 'solvedMs', 'seed'])
+            && request.resource.data.keys().hasOnly(['name', 'joinedAt', 'lastSeen', 'placed', 'solvedMs', 'seed', 'placements'])
             && request.resource.data.placed is int && request.resource.data.placed >= 0 && request.resource.data.placed <= 29);
       }
     }

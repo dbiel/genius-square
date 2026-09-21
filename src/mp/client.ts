@@ -26,10 +26,14 @@ import { assignName, makeRoomCode, normalizeRoomCode, rollAgreed, type RoomPlaye
 const HEARTBEAT_MS = 20_000;
 const ONLINE_WINDOW_MS = 60_000;
 
+/** A placed piece as sent over the wire: [orientation index, row, col]. */
+export type WirePlacements = Record<string, [number, number, number]>;
+
 export interface RoomPlayerState {
   id: string;
   name: string;
   placed: number;
+  placements: WirePlacements;
   solvedMs: number | null;
   online: boolean;
   joinedAt: number;
@@ -110,6 +114,7 @@ export class RoomClient {
       joinedAt: serverTimestamp(),
       lastSeen: serverTimestamp(),
       placed: 0,
+      placements: {},
       solvedMs: null,
       seed,
     });
@@ -128,6 +133,7 @@ export class RoomClient {
           this.playerData.set(p.id, {
             name: v.name as string,
             placed: (v.placed as number) ?? 0,
+            placements: (v.placements as WirePlacements) ?? {},
             solvedMs: (v.solvedMs as number | null) ?? null,
             joinedAt: millis(v.joinedAt),
             lastSeen: millis(v.lastSeen),
@@ -150,6 +156,7 @@ export class RoomClient {
         id,
         name: p.name,
         placed: p.placed,
+        placements: p.placements,
         solvedMs: p.solvedMs,
         joinedAt: p.joinedAt,
         online: id === this.playerId || now - p.lastSeen < ONLINE_WINDOW_MS,
@@ -183,17 +190,17 @@ export class RoomClient {
     return this.playerId;
   }
 
-  async setPlaced(placed: number): Promise<void> {
-    await updateDoc(this.playerRef(), { placed, lastSeen: serverTimestamp() }).catch(() => undefined);
+  async setPlaced(placed: number, placements: WirePlacements): Promise<void> {
+    await updateDoc(this.playerRef(), { placed, placements, lastSeen: serverTimestamp() }).catch(() => undefined);
   }
 
-  async setSolved(ms: number): Promise<void> {
-    await updateDoc(this.playerRef(), { solvedMs: ms, placed: 29, lastSeen: serverTimestamp() }).catch(() => undefined);
+  async setSolved(ms: number, placements: WirePlacements): Promise<void> {
+    await updateDoc(this.playerRef(), { solvedMs: ms, placed: 29, placements, lastSeen: serverTimestamp() }).catch(() => undefined);
   }
 
   /** Reset my progress for a new seed. */
   async startPuzzle(seed: number): Promise<void> {
-    await updateDoc(this.playerRef(), { placed: 0, solvedMs: null, seed, lastSeen: serverTimestamp() }).catch(() => undefined);
+    await updateDoc(this.playerRef(), { placed: 0, placements: {}, solvedMs: null, seed, lastSeen: serverTimestamp() }).catch(() => undefined);
   }
 
   /** Propose a new puzzle (I count as agreed), or agree to the one on the table. */

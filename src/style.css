@@ -469,3 +469,14 @@ button.btn.ghost.on { border-color: var(--accent-2); color: var(--accent-2); }
 .menu-row.sort { align-items: center; }
 .menu-row.sort .menu-sub { flex: 1; }
 .menu-row.sort .step { flex: 0 0 auto; min-width: 64px; font-size: 8px; padding: 8px 6px; min-height: 34px; }
+
+/* ---------- watch ---------- */
+
+.overlay.watch { z-index: 70; }
+.watch-card { width: min(92vw, 520px); padding: 16px; }
+.watch-board svg.board { width: 100%; height: auto; max-height: 70vh; }
+svg.board.watched .placed { cursor: default; }
+.rp .tiny { min-height: 28px; min-width: 0; padding: 6px 8px; font-size: 7px; }
+
+.level .dice { margin-left: 8px; }
+.level .dice svg { width: 20px; height: 20px; display: block; margin: 0 auto; }
