@@ -33,6 +33,10 @@ const NAME_KEY = 'gs.name';
 const DEFAULT_NAME = 'Player 1';
 const PLAYER_ID_KEY = 'gs.playerId';
 
+// Chunky pixel icons, drawn on an 8x8 grid so they match the font.
+const ICON_CLOCK = `<svg viewBox="0 0 8 8" shape-rendering="crispEdges"><path fill="currentColor" d="M2 0h4v1H2zM1 1h1v1H1zM6 1h1v1H6zM0 2h1v4H0zM7 2h1v4H7zM1 6h1v1H1zM6 6h1v1H6zM2 7h4v1H2zM3 2h1v3H3zM4 4h2v1H4z"/></svg>`;
+const ICON_SOUND = `<svg viewBox="0 0 8 8" shape-rendering="crispEdges"><path fill="currentColor" d="M0 3h1v2H0zM1 2h1v4H1zM2 1h1v6H2zM3 0h1v8H3zM5 2h1v1H5zM6 1h1v1H6zM5 5h1v1H5zM6 6h1v1H6zM7 2h1v4H7z"/></svg>`;
+
 interface Drag {
   id: PieceId;
   cells: Cell[];
@@ -190,6 +194,11 @@ export class App {
         <div class="status">
           <span class="puzzle">#${String(this.game.seed).padStart(5, '0')} LV${levelOf(this.game.seed)}${this.toBeat ? `<small class="tobeat">TO BEAT ${formatMs(this.toBeat.ms)} ${escapeHtml(this.toBeat.name)}</small>` : ''}</span>
           <span class="clock ${this.showTimer ? '' : 'hidden'}">${formatMs(this.game.elapsedMs())}</span>
+        </div>
+        <div class="icons">
+          <button class="icon ${this.showTimer ? '' : 'off'}" data-action="timer" aria-label="Timer" title="Show or hide the clock">${ICON_CLOCK}</button>
+          <button class="icon ${sound.isMuted() ? 'off' : ''}" data-action="mute" aria-label="Sound" title="Sound on or off">${ICON_SOUND}</button>
+          <button class="icon help" data-action="help" aria-label="Help" title="How to play">?</button>
           <button class="burger" data-action="menu" aria-label="Menu"><span></span><span></span><span></span></button>
         </div>
       </header>
@@ -265,14 +274,7 @@ export class App {
           <span class="level-value">LEVEL ${this.level}</span>
           <button class="btn ghost step" data-action="level-up" ${this.level >= LEVEL_COUNT ? 'disabled' : ''}>+</button>
         </div>
-        <div class="menu-row">
-          <button class="btn ghost ${this.showTimer ? '' : 'off'}" data-action="timer">Timer</button>
-          <button class="btn ghost ${sound.isMuted() ? 'off' : ''}" data-action="mute">Sound</button>
-        </div>
-        <div class="menu-row">
-          <button class="btn ghost" data-action="bests">Bests</button>
-          <button class="btn ghost" data-action="help">Help</button>
-        </div>
+        <button class="btn ghost wide" data-action="bests">Bests</button>
         <label class="menu-field">
           <span>PLAYER</span>
           <input class="name" name="playerName" type="text" maxlength="16" autocomplete="off" autocapitalize="words" value="${escapeHtml(this.playerName)}" />
@@ -699,7 +701,7 @@ export class App {
       else if (action === 'menu') this.toggleMenu();
       else if (action === 'menu-main') { this.menuView = 'main'; this.render(); }
       else if (action === 'bests') { this.menuView = 'bests'; sound.rotate(); this.render(); }
-      else if (action === 'help') { this.menuView = 'help'; sound.rotate(); this.render(); }
+      else if (action === 'help') { this.menuOpen = true; this.menuView = 'help'; sound.unlock(); sound.rotate(); this.render(); }
       else if (action === 'mp') { this.menuView = 'mp'; this.roomError = ''; sound.rotate(); this.render(); }
       else if (action === 'times') { this.menuView = 'times'; sound.rotate(); this.times = null; this.render(); void this.loadTimes(); }
       else if (action === 'create-room') void this.createRoom();

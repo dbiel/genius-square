@@ -59,8 +59,49 @@ body::after {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   font-size: 11px;
+}
+
+.icons { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+
+button.icon {
+  width: 44px;
+  height: 44px;
+  background: var(--panel);
+  border: 3px solid var(--ink);
+  box-shadow: 3px 3px 0 #000;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 16px;
+  position: relative;
+}
+
+button.icon svg { width: 22px; height: 22px; display: block; }
+button.icon:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #000; }
+button.icon.off { color: var(--dim); border-color: var(--dim); }
+button.icon.off::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 50%;
+  height: 3px;
+  background: var(--danger);
+  transform: rotate(-45deg);
+}
+button.icon.help { color: var(--accent); }
+
+@media (max-width: 480px) {
+  .topbar .status { order: 3; width: 100%; justify-content: space-between; }
+  button.icon, .burger { width: 38px; height: 38px; }
+  button.icon svg { width: 18px; height: 18px; }
 }
 
 .title {
