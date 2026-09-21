@@ -1,7 +1,7 @@
 import { Game, type GameHint } from '../core/game';
 import { DICE, squareName } from '../core/dice';
 import { SIZE } from '../core/board';
-import type { Cell, PieceId } from '../core/pieces';
+import { PIECES, type Cell, type PieceId } from '../core/pieces';
 import { BLOCKER_COLOR, BOARD_COLOR, PIECE_COLORS } from './colors';
 import { UNIT, pegSvg, pieceBounds, pieceSvg } from './tiles';
 import { sound } from './sound';
@@ -10,6 +10,14 @@ const MARGIN = 0.9; // label gutter, in cells
 const LIFT = 0.8; // cells the dragged piece floats above the finger
 /** Pieces whose mirror image cannot be reached by rotating: only these need a Flip button. */
 const CHIRAL = new Set<PieceId>(['bigL', 's']);
+/** Fixed tray rows. Each piece keeps its slot no matter how it is turned. */
+const TRAY_ROWS: PieceId[][] = [
+  ['dot', 'domino', 'bar3', 'smallL'],
+  ['bar4', 'square', 't'],
+  ['bigL', 's'],
+];
+/** Tray height in board cells: the tallest slot of each row, summed. */
+const TRAY_CELLS = 3 + 4 + 3;
 const BEST_KEY = 'gs.best';
 const TIMER_KEY = 'gs.showTimer';
 const MUTE_KEY = 'gs.mute';
@@ -71,7 +79,7 @@ export class App {
     const h = window.innerHeight - 24;
     const cell = landscape
       ? Math.min((h - 80) / (SIZE + MARGIN), (w * 0.55) / (SIZE + MARGIN))
-      : Math.min(w / (SIZE + MARGIN), (h - 260) / (SIZE + MARGIN));
+      : Math.min(w / (SIZE + MARGIN), (h - 170) / (SIZE + MARGIN + TRAY_CELLS * 0.62 + 0.8));
     document.documentElement.style.setProperty('--cell', `${Math.max(34, Math.floor(cell))}px`);
   }
 
@@ -137,16 +145,19 @@ export class App {
   }
 
   private trayHtml(): string {
-    return this.game
-      .pieces()
-      .map((p) => {
+    const pieces = new Map(this.game.pieces().map((p) => [p.id, p]));
+    return TRAY_ROWS.map((row) => {
+      const slots = row.map((id) => {
+        const p = pieces.get(id)!;
         const { w, h } = pieceBounds(p.cells);
+        const n = Math.max(...PIECES.find((x) => x.id === id)!.orientations.map((o) => Math.max(pieceBounds(o).w, pieceBounds(o).h)));
         const cls = ['piece', p.placed ? 'placed' : ''].join(' ');
         const svg = `<svg class="${cls}" data-piece="${p.id}" style="--w:${w};--h:${h}" viewBox="0 0 ${w * UNIT} ${h * UNIT}">${pieceSvg(p.cells, PIECE_COLORS[p.id])}</svg>`;
         const flip = CHIRAL.has(p.id) ? `<button class="flip" data-action="flip" data-flip="${p.id}">Flip</button>` : '';
-        return `<div class="slot">${svg}${flip}</div>`;
-      })
-      .join('');
+        return `<div class="slot"><div class="well" style="--n:${n}">${svg}</div>${flip}</div>`;
+      });
+      return `<div class="tray-row">${slots.join('')}</div>`;
+    }).join('');
   }
 
   private overlayHtml(): string {

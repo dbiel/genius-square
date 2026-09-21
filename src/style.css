@@ -84,7 +84,6 @@ body::after {
 
 @media (orientation: landscape) and (min-width: 700px) {
   .stage { flex-direction: row; justify-content: center; align-items: flex-start; gap: 28px; }
-  .tray { max-width: 40vw; }
 }
 
 .board-wrap { position: relative; }
@@ -108,10 +107,21 @@ svg.board {
 
 .tray {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.tray-row { display: flex; align-items: flex-start; justify-content: center; gap: 8px; }
+
+.tray .slot { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+
+/* Fixed slot width per piece (its longest side), so turning it never bumps it to another row. */
+.tray .well {
+  width: calc(var(--cell) * var(--tray-scale) * var(--n));
+  display: flex;
+  align-items: flex-start;
   justify-content: center;
-  gap: 10px;
-  max-width: calc(var(--cell) * 7.2);
 }
 
 .tray .piece {
