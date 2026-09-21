@@ -7,7 +7,7 @@ import { UNIT, pegSvg, pieceBounds, pieceSvg } from './tiles';
 import { sound } from './sound';
 import { LEVEL_COUNT, levelOf, randomSeedForLevel } from '../core/levels';
 import { LEVEL_BANDS, TOTAL_SOLUTIONS } from '../core/levels-data';
-import { RoomClient, bestTimeFor, recordTime, topTimes, type RoomState, type TimeEntry } from '../mp/client';
+import { RoomClient, bestTimeFor, recentTimes, recordTime, topTimes, type RoomState, type TimeEntry } from '../mp/client';
 import { isRoomCode } from '../mp/rules';
 import { PUZZLE_COUNT } from '../core/dice';
 
@@ -126,7 +126,8 @@ export class App {
   private level = clampLevel(Number(readStorage(LEVEL_KEY)) || DEFAULT_LEVEL);
   private menuOpen = false;
   private bestsSort: 'fastest' | 'recent' = 'fastest';
-  private menuView: 'main' | 'bests' | 'help' | 'mp' | 'times' = 'main';
+  private menuView: 'main' | 'help' | 'mp' | 'times' = 'main';
+  private timesScope: 'mine' | 'everyone' = 'mine';
   private readonly playerId = playerIdentity();
   private room: RoomClient | null = null;
   private roomState: RoomState | null = null;
@@ -193,12 +194,12 @@ export class App {
         <div class="title">GENIUS SQUARE</div>
         <div class="status">
           <span class="puzzle">#${String(this.game.seed).padStart(5, '0')} LV${levelOf(this.game.seed)}${this.toBeat ? `<small class="tobeat">TO BEAT ${formatMs(this.toBeat.ms)} ${escapeHtml(this.toBeat.name)}</small>` : ''}</span>
-          <span class="clock ${this.showTimer ? '' : 'hidden'}" data-action="timer" title="Tap to hide the clock">${formatMs(this.game.elapsedMs())}</span>
+          ${this.showTimer
+            ? `<span class="clock" data-action="timer" title="Tap to hide the clock">${formatMs(this.game.elapsedMs())}</span>`
+            : `<button class="icon small" data-action="timer" aria-label="Show clock" title="Tap to show the clock">${ICON_CLOCK}</button>`}
         </div>
         <div class="icons">
-          <button class="icon ${this.showTimer ? '' : 'quiet'}" data-action="timer" aria-label="Timer" title="Show or hide the clock">${ICON_CLOCK}</button>
           <button class="icon ${sound.isMuted() ? 'off' : ''}" data-action="mute" aria-label="Sound" title="Sound on or off">${ICON_SOUND}</button>
-          <button class="icon help" data-action="help" aria-label="Help" title="How to play">?</button>
           <button class="burger" data-action="menu" aria-label="Menu"><span></span><span></span><span></span></button>
         </div>
       </header>
@@ -257,8 +258,7 @@ export class App {
   private menuHtml(): string {
     if (!this.menuOpen) return '';
     const body =
-      this.menuView === 'bests' ? this.bestsHtml()
-      : this.menuView === 'help' ? this.helpHtml()
+      this.menuView === 'help' ? this.helpHtml()
       : this.menuView === 'mp' ? this.mpHtml()
       : this.menuView === 'times' ? this.timesHtml()
       : this.mainMenuHtml();
@@ -274,7 +274,7 @@ export class App {
           <span class="level-value">LEVEL ${this.level}</span>
           <button class="btn ghost step" data-action="level-up" ${this.level >= LEVEL_COUNT ? 'disabled' : ''}>+</button>
         </div>
-        <button class="btn ghost wide" data-action="bests">Bests</button>
+        <button class="btn ghost wide" data-action="times">Times</button>
         <label class="menu-field">
           <span>PLAYER</span>
           <input class="name" name="playerName" type="text" maxlength="16" autocomplete="off" autocapitalize="words" value="${escapeHtml(this.playerName)}" />
@@ -288,39 +288,8 @@ export class App {
         </form>
         <div class="menu-row">
           <button class="btn ghost ${this.room ? 'on' : ''}" data-action="mp">${this.room ? `Room ${this.room.code}` : 'Multiplayer'}</button>
-          <button class="btn ghost" data-action="times">Times</button>
+          <button class="btn ghost" data-action="help">Help</button>
         </div>`;
-  }
-
-  private bestsHtml(): string {
-    const bests = readPuzzleBests();
-    const top = overallBest(bests);
-    const rows = Object.entries(bests)
-      .map(([seed, b]) => ({ seed: Number(seed), ...b }))
-      .sort((a, b) => (this.bestsSort === 'recent' ? b.at - a.at || a.ms - b.ms : a.ms - b.ms || a.seed - b.seed));
-    const list = rows.length
-      ? rows
-          .map(
-            (r) => `<div class="best-row ${top && r.seed === top.seed ? 'top' : ''}">
-              <span class="best-time">${formatMs(r.ms)}</span>
-              <span class="best-info">#${String(r.seed).padStart(5, '0')} LV${levelOf(r.seed)}<small>${formatDate(r.at)}</small></span>
-              <button class="btn ghost step" data-action="play" data-seed="${r.seed}">Play</button>
-            </div>`,
-          )
-          .join('')
-      : '<p class="menu-note">No solves yet. Go fill a square!</p>';
-    return `
-        <div class="menu-head"><button class="btn ghost step" data-action="menu-main">&lt;</button><span>BESTS</span><button class="btn ghost step" data-action="menu">X</button></div>
-        <div class="pb-box">
-          <span>PERSONAL BEST</span>
-          ${top ? `<strong>${formatMs(top.ms)}</strong><small>puzzle #${String(top.seed).padStart(5, '0')}</small>` : '<strong>--:--</strong>'}
-        </div>
-        <div class="menu-row sort">
-          <span class="menu-sub">${rows.length} PUZZLE${rows.length === 1 ? '' : 'S'} SOLVED</span>
-          <button class="btn ghost step ${this.bestsSort === 'fastest' ? 'on' : ''}" data-action="sort-fastest">Fastest</button>
-          <button class="btn ghost step ${this.bestsSort === 'recent' ? 'on' : ''}" data-action="sort-recent">Recent</button>
-        </div>
-        <div class="best-list">${list}</div>`;
   }
 
   private mpHtml(): string {
@@ -351,13 +320,43 @@ export class App {
 
   private timesHtml(): string {
     const head = `<div class="menu-head"><button class="btn ghost step" data-action="menu-main">&lt;</button><span>TIMES</span><button class="btn ghost step" data-action="menu">X</button></div>`;
-    if (!this.times) return `${head}<p class="menu-note">Loading…</p>`;
-    const rows = this.times.length
-      ? this.times
-          .map((t, i) => `<div class="best-row ${i === 0 ? 'top' : ''}"><span class="best-time">${formatMs(t.ms)}</span><span class="best-info">${escapeHtml(t.name)}<small>#${String(t.seed).padStart(5, '0')} LV${levelOf(t.seed)} ${formatDate(t.at)}</small></span><button class="btn ghost step" data-action="play" data-seed="${t.seed}">Play</button></div>`)
-          .join('')
-      : '<p class="menu-note">No times yet.</p>';
-    return `${head}<div class="menu-sub">FASTEST SOLVES, EVERYONE</div><div class="best-list">${rows}</div>`;
+    const scope = `<div class="menu-row">
+        <button class="btn ghost ${this.timesScope === 'mine' ? 'on' : ''}" data-action="scope-mine">Mine</button>
+        <button class="btn ghost ${this.timesScope === 'everyone' ? 'on' : ''}" data-action="scope-everyone">Everyone</button>
+      </div>`;
+    const sort = (label: string) => `<div class="menu-row sort">
+        <span class="menu-sub">${label}</span>
+        <button class="btn ghost step ${this.bestsSort === 'fastest' ? 'on' : ''}" data-action="sort-fastest">Fastest</button>
+        <button class="btn ghost step ${this.bestsSort === 'recent' ? 'on' : ''}" data-action="sort-recent">Recent</button>
+      </div>`;
+    const row = (r: { seed: number; ms: number; at: number; name?: string }, top: boolean) => `<div class="best-row ${top ? 'top' : ''}">
+        <span class="best-time">${formatMs(r.ms)}</span>
+        <span class="best-info">${r.name ? `${escapeHtml(r.name)} ` : ''}#${String(r.seed).padStart(5, '0')} LV${levelOf(r.seed)}<small>${formatDate(r.at)}</small></span>
+        <button class="btn ghost step" data-action="play" data-seed="${r.seed}">Play</button>
+      </div>`;
+
+    if (this.timesScope === 'mine') {
+      const bests = readPuzzleBests();
+      const top = overallBest(bests);
+      const rows = Object.entries(bests)
+        .map(([seed, b]) => ({ seed: Number(seed), ...b }))
+        .sort((a, b) => (this.bestsSort === 'recent' ? b.at - a.at || a.ms - b.ms : a.ms - b.ms || a.seed - b.seed));
+      const list = rows.length ? rows.map((r) => row(r, top !== null && r.seed === top.seed)).join('') : '<p class="menu-note">No solves on this device yet. Go fill a square!</p>';
+      return `${head}${scope}
+        <div class="pb-box">
+          <span>PERSONAL BEST</span>
+          ${top ? `<strong>${formatMs(top.ms)}</strong><small>puzzle #${String(top.seed).padStart(5, '0')}</small>` : '<strong>--:--</strong>'}
+        </div>
+        ${sort(`${rows.length} PUZZLE${rows.length === 1 ? '' : 'S'} SOLVED`)}
+        <div class="best-list">${list}</div>`;
+    }
+
+    const list = this.times === null
+      ? '<p class="menu-note">Loading…</p>'
+      : this.times.length
+        ? this.times.map((t, i) => row(t, i === 0 && this.bestsSort === 'fastest')).join('')
+        : '<p class="menu-note">No times yet.</p>';
+    return `${head}${scope}${sort(this.bestsSort === 'recent' ? 'LATEST SOLVES, EVERYONE' : 'FASTEST SOLVES, EVERYONE')}<div class="best-list">${list}</div>`;
   }
 
   private roomStripHtml(): string {
@@ -399,7 +398,7 @@ export class App {
           <p><b>Drag</b> a piece from the tray onto the board with one finger. Green means it fits, red means it doesn't. Let go off the board to put it back.</p>
           <p><b>Tap</b> a piece to turn it a quarter turn. Only the light blue L and the red S have a mirror shape, so they have <b>Flip</b> buttons.</p>
           <p><b>Tap a greyed-out</b> piece in the tray to pull it back off the board.</p>
-          <p><b>Menu:</b> Roll starts a new puzzle at the chosen Level (1 easiest, ${LEVEL_COUNT} hardest). Timer and Sound switch the clock and audio. Bests lists your fastest times. Puzzle # jumps to any puzzle by number.</p>
+          <p><b>Menu:</b> Roll starts a new puzzle at the chosen Level (1 easiest, ${LEVEL_COUNT} hardest). Timer and Sound switch the clock and audio. Times lists your fastest solves on this device and everyone's fastest overall. Puzzle # jumps to any puzzle by number.</p>
           <p><b>Links:</b> the address bar always shows the current puzzle, like /12345. Share it and someone else gets the same roll.</p>
           <p><b>Install:</b> in Safari tap Share, then Add to Home Screen. It works offline after that.</p>
 
@@ -578,8 +577,13 @@ export class App {
   }
 
   private async loadTimes(): Promise<void> {
+    this.times = null;
+    this.render();
+    const want = this.bestsSort;
     try {
-      this.times = await topTimes(10);
+      const list = await (want === 'recent' ? recentTimes(20) : topTimes(20));
+      if (this.bestsSort !== want) return;
+      this.times = list;
     } catch {
       this.times = [];
     }
@@ -700,12 +704,13 @@ export class App {
       else if (action === 'level-up') this.setLevel(this.level + 1);
       else if (action === 'menu') this.toggleMenu();
       else if (action === 'menu-main') { this.menuView = 'main'; this.render(); }
-      else if (action === 'bests') { this.menuView = 'bests'; sound.rotate(); this.render(); }
       else if (action === 'help') { this.menuOpen = true; this.menuView = 'help'; sound.unlock(); sound.rotate(); this.render(); }
       else if (action === 'mp') { this.menuView = 'mp'; this.roomError = ''; sound.rotate(); this.render(); }
-      else if (action === 'times') { this.menuView = 'times'; sound.rotate(); this.times = null; this.render(); void this.loadTimes(); }
+      else if (action === 'times') { this.menuView = 'times'; sound.rotate(); this.render(); if (this.timesScope === 'everyone') void this.loadTimes(); }
+      else if (action === 'scope-mine') { this.timesScope = 'mine'; sound.rotate(); this.render(); }
+      else if (action === 'scope-everyone') { this.timesScope = 'everyone'; sound.rotate(); this.render(); void this.loadTimes(); }
       else if (action === 'create-room') void this.createRoom();
-      else if (action === 'sort-fastest' || action === 'sort-recent') { this.bestsSort = action === 'sort-recent' ? 'recent' : 'fastest'; sound.rotate(); this.render(); }
+      else if (action === 'sort-fastest' || action === 'sort-recent') { this.bestsSort = action === 'sort-recent' ? 'recent' : 'fastest'; sound.rotate(); this.render(); if (this.timesScope === 'everyone') void this.loadTimes(); }
       else if (action === 'leave') void this.leaveRoom();
       else if (action === 'play') this.roll(Number(button.dataset.seed));
       return;

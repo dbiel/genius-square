@@ -97,7 +97,8 @@ button.icon.off::after {
   transform: rotate(-45deg);
 }
 button.icon.help { color: var(--accent); }
-button.icon.quiet { color: var(--dim); border-color: var(--dim); }
+button.icon.small { width: 34px; height: 34px; color: var(--dim); border-color: var(--dim); box-shadow: 2px 2px 0 #000; }
+button.icon.small svg { width: 16px; height: 16px; }
 
 @media (max-width: 480px) {
   .topbar .status { order: 3; width: 100%; justify-content: space-between; }

@@ -232,6 +232,11 @@ export async function topTimes(count = 10): Promise<TimeEntry[]> {
   return snap.docs.map((d) => toEntry(d.data()));
 }
 
+export async function recentTimes(count = 10): Promise<TimeEntry[]> {
+  const snap = await getDocs(query(collectionGroup(firestore(), 'entries'), orderBy('at', 'desc'), limit(count)));
+  return snap.docs.map((d) => toEntry(d.data()));
+}
+
 function toEntry(v: Record<string, unknown>): TimeEntry {
   return { name: v.name as string, ms: v.ms as number, seed: v.seed as number, at: millis(v.at) };
 }
