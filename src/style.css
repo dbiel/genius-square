@@ -33,6 +33,9 @@ html, body {
   user-select: none;
   -webkit-touch-callout: none;
   overscroll-behavior: none;
+  /* Kill Safari's double-tap-to-zoom: taps belong to the game. */
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
 }
 
 body::after {
